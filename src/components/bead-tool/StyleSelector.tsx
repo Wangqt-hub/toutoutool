@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { PIXEL_STYLES, type PIXEL_STYLES as PixelStyles } from "@/app/api/ai-generate/route";
+import { PIXEL_STYLES, type PixelStyle } from "@/lib/bead/pixelStyles";
 import { Wand2, Sparkles } from "lucide-react";
 
 interface StyleSelectorProps {
