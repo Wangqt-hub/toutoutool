@@ -152,6 +152,13 @@ export default function ImageImportPage() {
                 syncAspectRatioSize(canvasWidth, metadata);
               }
             }}
+            onClear={() => {
+              setImageUrl(null);
+              setImageMetadata(null);
+              setGrid(null);
+              setPalette(null);
+              setError(null);
+            }}
             onError={setError}
           />
 

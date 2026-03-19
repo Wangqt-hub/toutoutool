@@ -15,11 +15,13 @@ interface ImageUploadStepProps {
     file: File,
     metadata: ImageMetadata
   ) => void;
+  onClear?: () => void;
   onError?: (error: string) => void;
 }
 
 export function ImageUploadStep({
   onImageSelect,
+  onClear,
   onError,
 }: ImageUploadStepProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -84,6 +86,7 @@ export function ImageUploadStep({
 
     setPreviewUrl(null);
     setFileName("");
+    onClear?.();
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
