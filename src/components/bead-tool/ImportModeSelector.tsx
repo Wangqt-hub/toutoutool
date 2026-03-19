@@ -57,13 +57,6 @@ export function ImportModeSelector({ onModeSelect }: ImportModeSelectorProps) {
 
  return (
     <div className="space-y-6">
-      <section className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-slate-900">拼豆工具</h1>
-        <p className="text-sm text-slate-600">
-          选择一种方式开始制作你的拼豆图纸吧！
-        </p>
-      </section>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {MODES.map((mode) => {
         const Icon = mode.icon;
