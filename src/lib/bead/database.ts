@@ -4,6 +4,7 @@
  */
 
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import type { BeadGrid } from './types';
 
 export interface BeadPatternRecord {
   id: string;
@@ -12,7 +13,7 @@ export interface BeadPatternRecord {
   pattern_data: {
   width: number;
   height: number;
-  grid: number[][];
+  grid: BeadGrid;
     palette: Array<{
      id: number;
     hex: string;

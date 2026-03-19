@@ -1,11 +1,10 @@
 /**
  * 拼豆工具 - 色卡库工具函数
- * 从 color_library.json 读取和管理色卡数据
  */
 
-import colorLibrary from '@/app/color_library.json';
+import colorLibrary from "@/app/color_library.json";
 
-export type ColorBrand = 'MARD' | 'COCO' | '漫漫' | '盼盼' | '咪小窝';
+export type ColorBrand = "MARD" | "COCO" | "漫漫" | "盼盼" | "咪小窝";
 
 export interface PaletteColor {
   id: number;
@@ -17,100 +16,148 @@ export interface ColorLibraryData {
   [key: string]: PaletteColor[];
 }
 
-// 色卡库类型定义
-type ColorLibrary = Record<string, Array<{
+type ColorLibraryEntry = {
   hex: string;
   MARD?: string;
   COCO?: string;
   漫漫?: string;
   盼盼?: string;
   咪小窝?: string;
-}>>;
+};
+
+type ColorLibrary = Record<string, ColorLibraryEntry[]>;
 
 const library = colorLibrary as ColorLibrary;
 
-/**
- * 获取指定颜色数量的色卡列表
- * @param colorCount 颜色数量（24, 48, 72 等）
- * @returns 色卡数组
- */
 export function getPalette(colorCount: number): PaletteColor[] {
   const key = `${colorCount}colors`;
-  const colors = library[key] || [];
-  
- return colors.map((color, index) => ({
-  id: index,
-   hex: color.hex,
-  brandCodes: {
-     MARD: color.MARD,
-     COCO: color.COCO,
-     '漫漫': color['漫漫'],
-     '盼盼': color['盼盼'],
-     '咪小窝': color['咪小窝']
-   }
+  const colors = library[key] ?? [];
+
+  return colors.map((color, index) => ({
+    id: index,
+    hex: color.hex,
+    brandCodes: {
+      MARD: color.MARD,
+      COCO: color.COCO,
+      漫漫: color.漫漫,
+      盼盼: color.盼盼,
+      咪小窝: color.咪小窝,
+    },
   }));
 }
 
-/**
- * 获取所有可用的色卡品牌名称
- * @returns 品牌名称数组
- */
 export function getAvailableBrands(): ColorBrand[] {
-  return ['MARD', 'COCO', '漫漫', '盼盼', '咪小窝'];
+  return ["MARD", "COCO", "漫漫", "盼盼", "咪小窝"];
 }
 
-/**
- * 获取指定的色号代码
- * @param color 色卡对象
- * @param brand 品牌名称
- * @returns 色号代码
- */
-export function getBrandCode(color: PaletteColor, brand: ColorBrand): string | undefined {
+export function getBrandCode(
+  color: PaletteColor,
+  brand: ColorBrand
+): string | undefined {
   return color.brandCodes?.[brand];
 }
 
-/**
- * 将 RGB 颜色转换为 Hex 格式
- */
-export function rgbToHex(r: number, g: number, b: number): string {
-  return '#' + [r, g, b].map(x => {
-   const hex = x.toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  }).join('').toUpperCase();
+export function getAvailableColorCounts(): number[] {
+  return Object.keys(library)
+    .filter((key) => key.endsWith("colors"))
+    .map((key) => Number.parseInt(key.replace("colors", ""), 10))
+    .sort((left, right) => left - right);
 }
 
-/**
- * 将 Hex 颜色转换为 RGB 格式
- */
-export function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const normalized = hex.replace('#', '');
-  const num = parseInt(normalized, 16);
+export function getFullPalette(): PaletteColor[] {
+  const counts = getAvailableColorCounts();
+  const largestCount = counts[counts.length - 1] ?? 24;
+  return getPalette(largestCount);
+}
+
+export function normalizeBrandCode(code: string): string {
+  const normalized = code.trim().toUpperCase().replace(/\s+/g, "");
+
+  if (!normalized) {
+    return "";
+  }
+
+  const match = /^([A-Z]+)(\d+)$/.exec(normalized);
+  if (!match) {
+    return normalized;
+  }
+
+  const [, prefix, digits] = match;
+  return `${prefix}${Number.parseInt(digits, 10)}`;
+}
+
+export function createBrandCodeLookup(
+  brand: ColorBrand,
+  palette: PaletteColor[]
+): Map<string, PaletteColor> {
+  const lookup = new Map<string, PaletteColor>();
+
+  palette.forEach((color) => {
+    const code = color.brandCodes?.[brand];
+    if (!code || code === "-") {
+      return;
+    }
+
+    lookup.set(code.trim().toUpperCase(), color);
+    lookup.set(normalizeBrandCode(code), color);
+  });
+
+  return lookup;
+}
+
+export function matchBrandCode(
+  brand: ColorBrand,
+  code: string,
+  palette: PaletteColor[]
+): { color: PaletteColor; matchedCode: string } | null {
+  const lookup = createBrandCodeLookup(brand, palette);
+  const raw = code.trim().toUpperCase();
+  const normalized = normalizeBrandCode(code);
+  const color = lookup.get(raw) ?? lookup.get(normalized);
+
+  if (!color) {
+    return null;
+  }
+
   return {
-    r: (num >> 16) & 255,
-    g: (num >> 8) & 255,
-    b: num & 255
+    color,
+    matchedCode: color.brandCodes?.[brand] ?? raw,
   };
 }
 
-/**
- * 计算两个 RGB 颜色之间的欧几里得距离
- */
+export function rgbToHex(r: number, g: number, b: number): string {
+  return (
+    "#" +
+    [r, g, b]
+      .map((value) => {
+        const hex = value.toString(16);
+        return hex.length === 1 ? `0${hex}` : hex;
+      })
+      .join("")
+      .toUpperCase()
+  );
+}
+
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const normalized = hex.replace("#", "");
+  const value = Number.parseInt(normalized, 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  };
+}
+
 export function colorDistance(
-  a: { r: number; g: number; b: number },
-  b: { r: number; g: number; b: number }
+  left: { r: number; g: number; b: number },
+  right: { r: number; g: number; b: number }
 ): number {
-  const dr = a.r - b.r;
-  const dg = a.g - b.g;
-  const db = a.b - b.b;
+  const dr = left.r - right.r;
+  const dg = left.g - right.g;
+  const db = left.b - right.b;
   return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
-/**
- * 找到最接近的色卡颜色
- * @param rgb RGB 颜色值
- * @param palette 色卡库
- * @returns 最接近的色卡索引
- */
 export function findClosestColor(
   rgb: { r: number; g: number; b: number },
   palette: PaletteColor[]
@@ -118,25 +165,15 @@ export function findClosestColor(
   let closestIndex = 0;
   let minDistance = Number.POSITIVE_INFINITY;
 
-  for (let i = 0; i < palette.length; i++) {
-   const colorRgb = hexToRgb(palette[i].hex);
-   const distance = colorDistance(rgb, colorRgb);
-    
+  for (let index = 0; index < palette.length; index += 1) {
+    const paletteRgb = hexToRgb(palette[index].hex);
+    const distance = colorDistance(rgb, paletteRgb);
+
     if (distance < minDistance) {
       minDistance = distance;
-     closestIndex = i;
+      closestIndex = index;
     }
   }
 
   return closestIndex;
-}
-
-/**
- * 获取所有可用的颜色数量选项
- */
-export function getAvailableColorCounts(): number[] {
-  return Object.keys(library)
-    .filter(key => key.endsWith('colors'))
-    .map(key => parseInt(key.replace('colors', '')))
-    .sort((a, b) => a - b);
 }

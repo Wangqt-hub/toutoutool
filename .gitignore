@@ -1,5 +1,7 @@
 .next/
 node_modules/
+.npm-cache/
+tsconfig.tsbuildinfo
 
 # env files
 .env

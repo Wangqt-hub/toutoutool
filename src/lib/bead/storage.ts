@@ -4,6 +4,7 @@
  */
 
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import type { BeadGrid } from './types';
 
 export interface BeadPatternMetadata {
   id?: string;
@@ -12,7 +13,7 @@ export interface BeadPatternMetadata {
   patternData: {
    width: number;
    height: number;
-   grid: number[][];
+   grid: BeadGrid;
     palette: Array<{
       id: number;
      hex: string;
@@ -98,7 +99,7 @@ export async function deletePattern(patternPath: string): Promise<void> {
  * 生成缩略图 Canvas
  */
 export function generateThumbnail(
-  grid: number[][],
+  grid: BeadGrid,
   palette: Array<{ hex: string }>,
   cellSize: number= 10
 ): HTMLCanvasElement {
@@ -119,7 +120,7 @@ export function generateThumbnail(
   for (let y = 0; y < height; y++) {
    for (let x = 0; x < width; x++) {
     const colorIndex = grid[y][x];
-    const color = palette[colorIndex];
+    const color = colorIndex === null ? null : palette[colorIndex];
      
      ctx.fillStyle = color?.hex || '#FFFFFF';
      ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);

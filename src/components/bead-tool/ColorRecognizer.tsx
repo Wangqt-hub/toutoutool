@@ -5,12 +5,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Palette, Droplet } from "lucide-react";
 import { PaletteColor } from "@/lib/bead/palette";
+import type { BeadGrid } from "@/lib/bead/types";
 
 interface ColorRecognizerProps {
   gridRows?: number;
   gridCols?: number;
   cellSize?: number;
-  onColorRecognized?: (grid: number[][], palette: PaletteColor[]) => void;
+  onColorRecognized?: (grid: BeadGrid, palette: PaletteColor[]) => void;
 }
 
 export function ColorRecognizer({ gridRows, gridCols, cellSize, onColorRecognized }: ColorRecognizerProps) {
@@ -62,7 +63,7 @@ export function ColorRecognizer({ gridRows, gridCols, cellSize, onColorRecognize
     const pixels = imageData.data;
 
      // 提取每个格子的平均颜色
-    const grid: number[][] = [];
+    const grid: BeadGrid = [];
     const usedColors = new Map<number, { r: number; g: number; b: number }>();
 
      for (let row = 0; row < gridRows; row++) {
