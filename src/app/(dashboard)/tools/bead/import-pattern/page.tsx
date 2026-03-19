@@ -294,6 +294,19 @@ export default function PatternImportPage() {
               setError(null);
               resetRecognition();
             }}
+            onClear={() => {
+              setSourceImageUrl(null);
+              setImageMetadata(null);
+              setCroppedImageUrl(null);
+              setGeometry(null);
+              setRowCount(0);
+              setColCount(0);
+              setBrand("MARD");
+              setColorCount(defaultColorCount);
+              setRecognitionMode("color");
+              setError(null);
+              resetRecognition();
+            }}
             onError={setError}
           />
 

@@ -12,7 +12,11 @@ import {
 import { PatternPreviewPanel } from "@/components/bead-tool/PatternPreviewPanel";
 import { PatternSettings } from "@/components/bead-tool/PatternSettings";
 import { StyleSelector } from "@/components/bead-tool/StyleSelector";
-import { getPalette, type ColorBrand, type PaletteColor } from "@/lib/bead/palette";
+import {
+  getPalette,
+  type ColorBrand,
+  type PaletteColor,
+} from "@/lib/bead/palette";
 import type { BeadGrid } from "@/lib/bead/types";
 import {
   calculateAspectRatioDimensionsFromWidth,
@@ -25,10 +29,27 @@ function clampSize(value: number): number {
   return Math.max(8, Math.min(128, Math.round(value)));
 }
 
+function toProcessSafeImageUrl(url: string): string {
+  if (url.startsWith("data:")) {
+    return url;
+  }
+
+  if (url.startsWith("/api/image-proxy")) {
+    return url;
+  }
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+}
+
 export default function AIGeneratePage() {
   const router = useRouter();
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageMetadata, setImageMetadata] = useState<ImageMetadata | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +71,10 @@ export default function AIGeneratePage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [showColorNumbers, setShowColorNumbers] = useState<boolean>(true);
 
+  const hasGeneratedImage = Boolean(generatedImageUrl);
+  const hasPattern = Boolean(grid && palette);
+  const isInfoMessage = Boolean(error?.includes("Demo mode:"));
+
   const syncAspectRatioSize = (
     nextWidth: number,
     metadata: ImageMetadata | null = imageMetadata
@@ -69,24 +94,34 @@ export default function AIGeneratePage() {
     setCanvasHeight(dimensions.height);
   };
 
+  const resetPatternState = () => {
+    setGrid(null);
+    setPalette(null);
+  };
+
   const handleAIGenerate = async () => {
-    if (!imageUrl) {
+    if (!imageFile) {
       setError("请先上传图片");
       return;
     }
 
     setAiLoading(true);
     setError(null);
+    setGeneratedImageUrl(null);
+    resetPatternState();
 
     try {
+      const formData = new FormData();
+      formData.append("image", imageFile);
+      formData.append("styleId", selectedStyle);
+
+      if (customPrompt.trim()) {
+        formData.append("customPrompt", customPrompt.trim());
+      }
+
       const response = await fetch("/api/ai-generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageUrl,
-          styleId: selectedStyle,
-          customPrompt,
-        }),
+        body: formData,
       });
 
       const result = await response.json();
@@ -95,12 +130,14 @@ export default function AIGeneratePage() {
         throw new Error(result.error || "AI 生成失败");
       }
 
-      setGeneratedImageUrl(result.data.imageUrl);
+      setGeneratedImageUrl(toProcessSafeImageUrl(result.data.imageUrl));
 
       if (result.data.message) {
         setError(result.data.message);
       }
     } catch (generationError) {
+      setGeneratedImageUrl(null);
+      resetPatternState();
       setError(
         generationError instanceof Error
           ? generationError.message
@@ -111,7 +148,12 @@ export default function AIGeneratePage() {
     }
   };
 
-  const handleCreatePattern = async (sourceUrl: string) => {
+  const handleCreatePattern = async () => {
+    if (!generatedImageUrl) {
+      setError("请先成功生成 AI 图片");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -124,12 +166,18 @@ export default function AIGeneratePage() {
         algorithm,
       };
 
-      const result = await processImage(sourceUrl, settings, selectedPalette);
+      const result = await processImage(
+        generatedImageUrl,
+        settings,
+        selectedPalette
+      );
+
       setGrid(result.grid);
       setPalette(result.palette);
       setCanvasWidth(result.width);
       setCanvasHeight(result.height);
     } catch (generationError) {
+      resetPatternState();
       setError(
         generationError instanceof Error
           ? generationError.message
@@ -157,8 +205,6 @@ export default function AIGeneratePage() {
     router.push("/tools/bead/bead-mode");
   };
 
-  const isInfoMessage = Boolean(error && error.includes("演示模式"));
-
   return (
     <div className="space-y-6">
       <section className="flex flex-col gap-2">
@@ -177,7 +223,7 @@ export default function AIGeneratePage() {
           <Sparkles className="w-6 h-6 text-purple-500" />
         </div>
         <p className="text-sm text-slate-600">
-          使用 AI 将图片转换为独特的像素风格，再生成拼豆图纸。
+          先用 AI 生成像素风图片，再基于 AI 结果调整图纸设置并生成最终拼豆图纸。
         </p>
       </section>
 
@@ -189,24 +235,32 @@ export default function AIGeneratePage() {
               : "bg-red-50 border border-red-100 text-red-600"
           }`}
         >
-          ⚠️ {error}
+          提示：{error}
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div className="space-y-4">
           <ImageUploadStep
-            onImageSelect={(url, _file, metadata) => {
+            onImageSelect={(url, file, metadata) => {
               setImageUrl(url);
+              setImageFile(file);
               setImageMetadata(metadata);
               setGeneratedImageUrl(null);
-              setGrid(null);
-              setPalette(null);
+              resetPatternState();
               setError(null);
 
               if (maintainAspectRatio) {
                 syncAspectRatioSize(canvasWidth, metadata);
               }
+            }}
+            onClear={() => {
+              setImageUrl(null);
+              setImageFile(null);
+              setImageMetadata(null);
+              setGeneratedImageUrl(null);
+              resetPatternState();
+              setError(null);
             }}
             onError={setError}
           />
@@ -223,12 +277,12 @@ export default function AIGeneratePage() {
             size="lg"
             className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             onClick={handleAIGenerate}
-            disabled={aiLoading || !imageUrl}
+            disabled={aiLoading || !imageFile}
           >
             {aiLoading ? (
               <>
                 <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                AI 生成中…
+                AI 生成中...
               </>
             ) : (
               <>
@@ -238,69 +292,66 @@ export default function AIGeneratePage() {
             )}
           </Button>
 
-          {generatedImageUrl && (
-            <Card className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-900">
-                  AI 生成预览
-                </h3>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => handleCreatePattern(generatedImageUrl)}
-                  disabled={loading}
-                >
-                  用这张图继续
-                </Button>
-              </div>
-              <img
-                src={generatedImageUrl}
-                alt="AI 生成预览"
-                className="w-full rounded-2xl border border-cream-100"
+          {hasGeneratedImage && (
+            <>
+              <Card className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    AI 生成预览
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    后续图纸将只基于这张 AI 图片生成
+                  </span>
+                </div>
+                <img
+                  src={generatedImageUrl ?? undefined}
+                  alt="AI 生成预览"
+                  className="w-full rounded-2xl border border-cream-100"
+                />
+              </Card>
+
+              <PatternSettings
+                canvasWidth={canvasWidth}
+                canvasHeight={canvasHeight}
+                maintainAspectRatio={maintainAspectRatio}
+                onCanvasWidthChange={(nextWidth) => {
+                  if (maintainAspectRatio) {
+                    syncAspectRatioSize(nextWidth);
+                    return;
+                  }
+
+                  setCanvasWidth(clampSize(nextWidth));
+                }}
+                onCanvasHeightChange={(nextHeight) => {
+                  setCanvasHeight(clampSize(nextHeight));
+                }}
+                onMaintainAspectRatioChange={(nextMaintainAspectRatio) => {
+                  setMaintainAspectRatio(nextMaintainAspectRatio);
+
+                  if (nextMaintainAspectRatio) {
+                    syncAspectRatioSize(canvasWidth);
+                  }
+                }}
+                colorCount={colorCount}
+                brand={brand}
+                onColorCountChange={setColorCount}
+                onBrandChange={setBrand}
+                algorithm={algorithm}
+                onAlgorithmChange={setAlgorithm}
               />
-            </Card>
+
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                className="w-full"
+                onClick={handleCreatePattern}
+                disabled={loading || !generatedImageUrl}
+              >
+                {loading ? "正在生成最终图纸..." : "使用 AI 图片生成最终图纸"}
+              </Button>
+            </>
           )}
-
-          <PatternSettings
-            canvasWidth={canvasWidth}
-            canvasHeight={canvasHeight}
-            maintainAspectRatio={maintainAspectRatio}
-            onCanvasWidthChange={(nextWidth) => {
-              if (maintainAspectRatio) {
-                syncAspectRatioSize(nextWidth);
-                return;
-              }
-
-              setCanvasWidth(clampSize(nextWidth));
-            }}
-            onCanvasHeightChange={(nextHeight) => {
-              setCanvasHeight(clampSize(nextHeight));
-            }}
-            onMaintainAspectRatioChange={(nextMaintainAspectRatio) => {
-              setMaintainAspectRatio(nextMaintainAspectRatio);
-
-              if (nextMaintainAspectRatio) {
-                syncAspectRatioSize(canvasWidth);
-              }
-            }}
-            colorCount={colorCount}
-            brand={brand}
-            onColorCountChange={setColorCount}
-            onBrandChange={setBrand}
-            algorithm={algorithm}
-            onAlgorithmChange={setAlgorithm}
-          />
-
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            className="w-full"
-            onClick={() => imageUrl && handleCreatePattern(imageUrl)}
-            disabled={loading || !imageUrl}
-          >
-            {generatedImageUrl ? "使用原图重新制作" : "跳过 AI，直接制作"}
-          </Button>
         </div>
 
         <div className="space-y-4">
@@ -315,7 +366,7 @@ export default function AIGeneratePage() {
               <div className="flex h-64 items-center justify-center rounded-3xl border border-dashed border-cream-100 bg-cream-50/60 text-xs text-slate-500 text-center px-4">
                 <div className="space-y-2">
                   <Sparkles className="w-8 h-8 mx-auto text-slate-300" />
-                  <p>先上传图片并生成像素图，然后再预览完整图纸。</p>
+                  <p>先上传图片并成功生成 AI 像素图，然后再继续生成最终图纸。</p>
                 </div>
               </div>
             }
@@ -325,9 +376,10 @@ export default function AIGeneratePage() {
                 size="lg"
                 className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-600/90 hover:to-pink-600/90 text-white"
                 onClick={handleEnterBeadMode}
+                disabled={!hasPattern}
               >
                 <Grid3X3 className="w-5 h-5 mr-2" />
-                进入拼豆模式 · 开始制作
+                进入拼豆模式，开始制作
               </Button>
             }
           />
