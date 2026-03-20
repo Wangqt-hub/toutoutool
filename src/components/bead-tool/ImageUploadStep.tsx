@@ -22,17 +22,131 @@ interface ImageUploadStepProps {
   disabled?: boolean;
 }
 
-function loadImageMetadata(url: string) {
-  return new Promise<ImageMetadata>((resolve, reject) => {
+const MAX_SOURCE_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_UPLOAD_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_UPLOAD_EDGE = 1280;
+const PASSTHROUGH_FILE_BYTES = 1500 * 1024;
+const PASSTHROUGH_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+function loadImageElement(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new window.Image();
-    image.onload = () =>
-      resolve({
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-      });
+    image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("图片加载失败，请重新上传"));
     image.src = url;
   });
+}
+
+async function loadImageMetadata(url: string): Promise<ImageMetadata> {
+  const image = await loadImageElement(url);
+
+  return {
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+  };
+}
+
+function getNormalizedFileName(fileName: string): string {
+  const lastDotIndex = fileName.lastIndexOf(".");
+
+  if (lastDotIndex <= 0) {
+    return `${fileName}.jpg`;
+  }
+
+  return `${fileName.slice(0, lastDotIndex)}.jpg`;
+}
+
+function canvasToJpegBlob(
+  canvas: HTMLCanvasElement,
+  quality: number
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("图片压缩失败，请更换图片后再试"));
+          return;
+        }
+
+        resolve(blob);
+      },
+      "image/jpeg",
+      quality
+    );
+  });
+}
+
+async function normalizeUploadImage(file: File): Promise<{
+  file: File;
+  metadata: ImageMetadata;
+}> {
+  const sourceUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageElement(sourceUrl);
+    const metadata = {
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+    };
+    const longestEdge = Math.max(metadata.width, metadata.height);
+    const canKeepOriginal =
+      PASSTHROUGH_TYPES.has(file.type) &&
+      file.size <= PASSTHROUGH_FILE_BYTES &&
+      longestEdge <= MAX_UPLOAD_EDGE;
+
+    if (canKeepOriginal) {
+      return {
+        file,
+        metadata,
+      };
+    }
+
+    const scale =
+      longestEdge > MAX_UPLOAD_EDGE ? MAX_UPLOAD_EDGE / longestEdge : 1;
+    const targetWidth = Math.max(1, Math.round(metadata.width * scale));
+    const targetHeight = Math.max(1, Math.round(metadata.height * scale));
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("当前浏览器不支持图片预处理，请更换浏览器后重试");
+    }
+
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    let quality = 0.88;
+    let blob = await canvasToJpegBlob(canvas, quality);
+
+    while (blob.size > MAX_UPLOAD_FILE_BYTES && quality > 0.56) {
+      quality -= 0.08;
+      blob = await canvasToJpegBlob(canvas, quality);
+    }
+
+    if (blob.size > MAX_UPLOAD_FILE_BYTES) {
+      throw new Error("图片压缩后仍超过 5MB，请换一张更小的图片");
+    }
+
+    return {
+      file: new File([blob], getNormalizedFileName(file.name), {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      }),
+      metadata: {
+        width: targetWidth,
+        height: targetHeight,
+      },
+    };
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
 }
 
 export function ImageUploadStep({
@@ -67,25 +181,25 @@ export function ImageUploadStep({
       return;
     }
 
-    const file = event.target.files?.[0];
+    const sourceFile = event.target.files?.[0];
 
-    if (!file) {
+    if (!sourceFile) {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      onError?.("请上传图片文件（JPG / PNG / WebP / BMP）");
+    if (!sourceFile.type.startsWith("image/")) {
+      onError?.("请上传图片文件（JPG / PNG / WebP / BMP / HEIC）");
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      onError?.("图片大小不能超过 5MB");
+    if (sourceFile.size > MAX_SOURCE_FILE_BYTES) {
+      onError?.("图片原文件不能超过 20MB");
       return;
     }
-
-    const objectUrl = URL.createObjectURL(file);
 
     try {
+      const normalized = await normalizeUploadImage(sourceFile);
+      const objectUrl = URL.createObjectURL(normalized.file);
       const metadata = await loadImageMetadata(objectUrl);
 
       if (internalPreviewUrl?.startsWith("blob:")) {
@@ -93,13 +207,14 @@ export function ImageUploadStep({
       }
 
       setInternalPreviewUrl(objectUrl);
-      setInternalFileName(file.name);
-      onImageSelect?.(objectUrl, file, metadata);
+      setInternalFileName(normalized.file.name);
+      onImageSelect?.(objectUrl, normalized.file, metadata);
     } catch (error) {
-      URL.revokeObjectURL(objectUrl);
       onError?.(
         error instanceof Error ? error.message : "图片读取失败，请重新上传"
       );
+    } finally {
+      event.target.value = "";
     }
   };
 
@@ -151,7 +266,7 @@ export function ImageUploadStep({
                 点击或拖拽上传图片
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                支持 JPG、PNG、WebP、BMP，最大 5MB
+                支持 JPG、PNG、WebP、BMP、HEIC，上传前会自动优化
               </p>
             </div>
           </div>
@@ -208,7 +323,7 @@ export function ImageUploadStep({
         />
 
         <p className="text-[11px] text-slate-500">
-          建议使用清晰、主体明确的图片，生成后的拼豆图纸会更稳定。
+          建议使用清晰、主体明确的图片；移动端大图会先压缩后再上传，生成会更稳定。
         </p>
       </div>
     </Card>

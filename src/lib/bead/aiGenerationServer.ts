@@ -131,12 +131,6 @@ export function buildAIImagePath(
   return `${userId}/${generationId}/ai.png`;
 }
 
-export async function fileToDataUrl(file: File): Promise<string> {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const mimeType = file.type || "image/png";
-  return `data:${mimeType};base64,${buffer.toString("base64")}`;
-}
-
 export function mapDashScopeTaskStatus(
   taskStatus?: string | null
 ): AIGenerationStatus {
@@ -276,6 +270,22 @@ export async function uploadStorageObject(options: {
   if (error) {
     throw new Error(error.message);
   }
+}
+
+export async function createSignedStorageUrl(options: {
+  supabaseAdmin: SupabaseAdminClient;
+  path: string;
+  expiresIn?: number;
+}): Promise<string> {
+  const { data, error } = await options.supabaseAdmin.storage
+    .from(AI_GENERATION_BUCKET)
+    .createSignedUrl(options.path, options.expiresIn ?? 60 * 30);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || "Failed to create signed image url.");
+  }
+
+  return data.signedUrl;
 }
 
 export async function uploadAIResultFromUrl(options: {
