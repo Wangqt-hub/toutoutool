@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 import { LogoutButton } from "@/components/ui/logout-button";
@@ -8,6 +8,19 @@ import { MembershipPreviewButton } from "@/components/ui/membership-preview";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
 
   return (
     <div className="min-h-screen bg-cream-50">
@@ -82,12 +95,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
       {/* 移动端：侧边抽屉导航 */}
       {open && (
-        <div className="fixed inset-0 z-30 md:hidden">
+        <div className="fixed inset-0 z-30 md:hidden overscroll-contain">
           <div
             className="absolute inset-0 bg-black/20"
             onClick={() => setOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 w-64 bg-cream-50 border-r border-cream-100 shadow-[0_12px_40px_rgba(0,0,0,0.18)] p-4 flex flex-col gap-4">
+          <aside className="absolute inset-y-0 left-0 w-[85vw] max-w-64 overflow-y-auto bg-cream-50 border-r border-cream-100 shadow-[0_12px_40px_rgba(0,0,0,0.18)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="h-8 w-8">
@@ -150,7 +163,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        {children}
+      </main>
     </div>
   );
 }

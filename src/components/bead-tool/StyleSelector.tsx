@@ -30,7 +30,7 @@ export function StyleSelector({
           2. 选择像素风格
         </label>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {PIXEL_STYLES.map((style) => (
             <button
               key={style.id}

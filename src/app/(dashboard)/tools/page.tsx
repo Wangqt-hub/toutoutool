@@ -37,7 +37,7 @@ export default function ToolsHomePage() {
             这里是你的专属小工具抽屉，后面还会一点点变得更丰富。
           </p>
         </div>
-        <div className="rounded-full bg-cream-100 px-3 py-1 text-[11px] text-slate-600">
+        <div className="self-start rounded-full bg-cream-100 px-3 py-1 text-[11px] text-slate-600 md:self-auto">
           会员预留：未来会解锁更大的拼豆图纸、更聪明的旅行规划等功能。
         </div>
       </section>

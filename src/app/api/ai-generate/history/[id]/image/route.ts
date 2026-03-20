@@ -75,7 +75,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
           success: false,
           error: "Requested image is not available.",
         },
-        { status: 404 }
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "private, no-store, max-age=0",
+          },
+        }
       );
     }
 
@@ -84,11 +89,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
       path,
     });
     const contentType = image.type || "application/octet-stream";
+    const etag = `"${Buffer.from(`${kindParam}:${path}`).toString("base64url")}"`;
+
+    if (request.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
+        },
+      });
+    }
 
     return new NextResponse(await image.arrayBuffer(), {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "private, no-store, max-age=0",
+        ETag: etag,
+        "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
       },
     });
   } catch (error) {

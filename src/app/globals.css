@@ -11,10 +11,18 @@ html,
 body {
   @apply bg-cream-50 text-slate-800;
   font-family: var(--font-rounded);
+  overflow-x: hidden;
 }
 
 body {
   @apply antialiased;
+}
+
+input,
+select,
+textarea,
+button {
+  -webkit-tap-highlight-color: transparent;
 }
 
 a {

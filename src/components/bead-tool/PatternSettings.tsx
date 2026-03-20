@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import {
   getAvailableColorCounts,
@@ -46,7 +47,37 @@ const ALGORITHM_OPTIONS: Array<{
 ];
 
 function clampSize(value: number): number {
-  return Math.max(8, Math.min(128, value));
+  return Math.max(8, Math.min(128, Math.round(value)));
+}
+
+function normalizeDraftValue(
+  draft: string,
+  fallback: number
+): { nextDraft: string; nextValue: number | null } {
+  const trimmed = draft.trim();
+
+  if (!trimmed) {
+    return {
+      nextDraft: String(fallback),
+      nextValue: null,
+    };
+  }
+
+  const parsed = Number(trimmed);
+
+  if (!Number.isFinite(parsed)) {
+    return {
+      nextDraft: String(fallback),
+      nextValue: null,
+    };
+  }
+
+  const clamped = clampSize(parsed);
+
+  return {
+    nextDraft: String(clamped),
+    nextValue: clamped,
+  };
 }
 
 export function PatternSettings({
@@ -65,16 +96,64 @@ export function PatternSettings({
 }: PatternSettingsProps) {
   const availableColorCounts = getAvailableColorCounts();
   const brands = getAvailableBrands();
+  const [widthDraft, setWidthDraft] = useState<string>(String(canvasWidth));
+  const [heightDraft, setHeightDraft] = useState<string>(String(canvasHeight));
+
+  useEffect(() => {
+    setWidthDraft(String(canvasWidth));
+  }, [canvasWidth]);
+
+  useEffect(() => {
+    setHeightDraft(String(canvasHeight));
+  }, [canvasHeight]);
+
+  const commitWidthDraft = () => {
+    const { nextDraft, nextValue } = normalizeDraftValue(
+      widthDraft,
+      canvasWidth
+    );
+
+    setWidthDraft(nextDraft);
+
+    if (nextValue !== null && nextValue !== canvasWidth) {
+      onCanvasWidthChange(nextValue);
+    }
+  };
+
+  const commitHeightDraft = () => {
+    const { nextDraft, nextValue } = normalizeDraftValue(
+      heightDraft,
+      canvasHeight
+    );
+
+    setHeightDraft(nextDraft);
+
+    if (nextValue !== null && nextValue !== canvasHeight) {
+      onCanvasHeightChange(nextValue);
+    }
+  };
+
+  const handleDraftKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+    commit: () => void
+  ) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.currentTarget.blur();
+    commit();
+  };
 
   return (
     <Card className="space-y-4">
       <div className="space-y-2">
         <label className="text-xs font-medium text-slate-700 flex items-center gap-2">
-          <span>📐</span>
+          <span>📏</span>
           图纸设置
         </label>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-700">
               宽度（格数）
@@ -83,10 +162,11 @@ export function PatternSettings({
               type="number"
               min="8"
               max="128"
-              value={canvasWidth}
-              onChange={(event) =>
-                onCanvasWidthChange(clampSize(Number(event.target.value)))
-              }
+              inputMode="numeric"
+              value={widthDraft}
+              onChange={(event) => setWidthDraft(event.target.value)}
+              onBlur={commitWidthDraft}
+              onKeyDown={(event) => handleDraftKeyDown(event, commitWidthDraft)}
               className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
             />
           </div>
@@ -99,10 +179,11 @@ export function PatternSettings({
               type="number"
               min="8"
               max="128"
-              value={canvasHeight}
-              onChange={(event) =>
-                onCanvasHeightChange(clampSize(Number(event.target.value)))
-              }
+              inputMode="numeric"
+              value={heightDraft}
+              onChange={(event) => setHeightDraft(event.target.value)}
+              onBlur={commitHeightDraft}
+              onKeyDown={(event) => handleDraftKeyDown(event, commitHeightDraft)}
               disabled={maintainAspectRatio}
               className={`w-full rounded-2xl border px-3 py-2 text-sm outline-none ${
                 maintainAspectRatio
@@ -158,7 +239,7 @@ export function PatternSettings({
       <div className="h-px bg-cream-100" />
 
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-700">
               颜色数量
@@ -174,10 +255,10 @@ export function PatternSettings({
                   {count <= 24
                     ? "（简单）"
                     : count <= 48
-                      ? "（推荐）"
-                      : count <= 72
-                        ? "（丰富）"
-                        : "（专业）"}
+                    ? "（推荐）"
+                    : count <= 72
+                    ? "（丰富）"
+                    : "（专业）"}
                 </option>
               ))}
             </select>

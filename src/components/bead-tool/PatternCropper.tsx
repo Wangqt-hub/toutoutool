@@ -24,11 +24,23 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function createDefaultCrop(width: number, height: number): DisplayCropRect {
+  const cropWidth = width * 0.82;
+  const cropHeight = height * 0.82;
+
+  return {
+    x: (width - cropWidth) / 2,
+    y: (height - cropHeight) / 2,
+    width: cropWidth,
+    height: cropHeight,
+  };
+}
+
 export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{
     handle: DragHandle;
+    pointerId: number;
     startX: number;
     startY: number;
     initialCrop: DisplayCropRect;
@@ -40,11 +52,16 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
 
   useEffect(() => {
     setCrop(null);
+    dragState.current = null;
   }, [imageUrl]);
 
   useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
+    const handlePointerMove = (event: PointerEvent) => {
       if (!dragState.current || !crop) {
+        return;
+      }
+
+      if (event.pointerId !== dragState.current.pointerId) {
         return;
       }
 
@@ -66,8 +83,16 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
           displaySize.height - initialCrop.height
         );
       } else if (handle === "nw") {
-        const nextX = clamp(initialCrop.x + deltaX, 0, initialCrop.x + initialCrop.width - minSize);
-        const nextY = clamp(initialCrop.y + deltaY, 0, initialCrop.y + initialCrop.height - minSize);
+        const nextX = clamp(
+          initialCrop.x + deltaX,
+          0,
+          initialCrop.x + initialCrop.width - minSize
+        );
+        const nextY = clamp(
+          initialCrop.y + deltaY,
+          0,
+          initialCrop.y + initialCrop.height - minSize
+        );
         nextCrop = {
           x: nextX,
           y: nextY,
@@ -80,7 +105,11 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
           minSize,
           displaySize.width - initialCrop.x
         );
-        const nextY = clamp(initialCrop.y + deltaY, 0, initialCrop.y + initialCrop.height - minSize);
+        const nextY = clamp(
+          initialCrop.y + deltaY,
+          0,
+          initialCrop.y + initialCrop.height - minSize
+        );
         nextCrop = {
           x: initialCrop.x,
           y: nextY,
@@ -88,7 +117,11 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
           height: initialCrop.height + (initialCrop.y - nextY),
         };
       } else if (handle === "sw") {
-        const nextX = clamp(initialCrop.x + deltaX, 0, initialCrop.x + initialCrop.width - minSize);
+        const nextX = clamp(
+          initialCrop.x + deltaX,
+          0,
+          initialCrop.x + initialCrop.width - minSize
+        );
         const nextHeight = clamp(
           initialCrop.height + deltaY,
           minSize,
@@ -120,27 +153,37 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       setCrop(nextCrop);
     };
 
-    const handleMouseUp = () => {
+    const stopDrag = (event?: PointerEvent) => {
+      if (
+        event &&
+        dragState.current &&
+        event.pointerId !== dragState.current.pointerId
+      ) {
+        return;
+      }
+
       dragState.current = null;
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("pointermove", handlePointerMove, {
+      passive: false,
+    });
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
     };
   }, [crop, displaySize.height, displaySize.width]);
 
   const setDefaultCrop = () => {
-    const width = displaySize.width * 0.82;
-    const height = displaySize.height * 0.82;
-    setCrop({
-      x: (displaySize.width - width) / 2,
-      y: (displaySize.height - height) / 2,
-      width,
-      height,
-    });
+    if (displaySize.width === 0 || displaySize.height === 0) {
+      return;
+    }
+
+    setCrop(createDefaultCrop(displaySize.width, displaySize.height));
   };
 
   const handleImageLoad = () => {
@@ -154,18 +197,13 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       width: imageRef.current.naturalWidth,
       height: imageRef.current.naturalHeight,
     });
-
-    const width = rect.width * 0.82;
-    const height = rect.height * 0.82;
-    setCrop({
-      x: (rect.width - width) / 2,
-      y: (rect.height - height) / 2,
-      width,
-      height,
-    });
+    setCrop(createDefaultCrop(rect.width, rect.height));
   };
 
-  const startDrag = (handle: DragHandle, event: React.MouseEvent) => {
+  const startDrag = (
+    handle: DragHandle,
+    event: React.PointerEvent<HTMLElement>
+  ) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -175,6 +213,7 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
 
     dragState.current = {
       handle,
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       initialCrop: crop,
@@ -182,7 +221,13 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
   };
 
   const handleConfirm = () => {
-    if (!crop || naturalSize.width === 0 || naturalSize.height === 0) {
+    if (
+      !crop ||
+      naturalSize.width === 0 ||
+      naturalSize.height === 0 ||
+      displaySize.width === 0 ||
+      displaySize.height === 0
+    ) {
       return;
     }
 
@@ -211,7 +256,10 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       </div>
 
       <div className="rounded-3xl border border-cream-100 bg-cream-50/60 p-3">
-        <div ref={frameRef} className="relative inline-block max-w-full select-none">
+        <div
+          className="relative inline-block max-w-full select-none touch-none"
+          style={{ touchAction: "none" }}
+        >
           <img
             ref={imageRef}
             src={imageUrl}
@@ -225,7 +273,12 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
             <>
               <div
                 className="absolute bg-black/35 pointer-events-none rounded-tl-2xl"
-                style={{ left: 0, top: 0, width: displaySize.width, height: crop.y }}
+                style={{
+                  left: 0,
+                  top: 0,
+                  width: displaySize.width,
+                  height: crop.y,
+                }}
               />
               <div
                 className="absolute bg-black/35 pointer-events-none"
@@ -256,34 +309,40 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
               />
 
               <div
-                className="absolute border-2 border-green-500 shadow-[0_0_0_9999px_rgba(0,0,0,0)] rounded-xl cursor-move"
+                className="absolute border-2 border-green-500 shadow-[0_0_0_9999px_rgba(0,0,0,0)] rounded-xl cursor-move touch-none"
                 style={{
                   left: crop.x,
                   top: crop.y,
                   width: crop.width,
                   height: crop.height,
+                  touchAction: "none",
                 }}
-                onMouseDown={(event) => startDrag("move", event)}
+                onPointerDown={(event) => startDrag("move", event)}
               >
                 {(["nw", "ne", "sw", "se"] as DragHandle[]).map((handle) => {
                   const positionStyle =
                     handle === "nw"
-                      ? { left: -6, top: -6, cursor: "nwse-resize" }
+                      ? { left: -12, top: -12, cursor: "nwse-resize" }
                       : handle === "ne"
-                        ? { right: -6, top: -6, cursor: "nesw-resize" }
-                        : handle === "sw"
-                          ? { left: -6, bottom: -6, cursor: "nesw-resize" }
-                          : { right: -6, bottom: -6, cursor: "nwse-resize" };
+                      ? { right: -12, top: -12, cursor: "nesw-resize" }
+                      : handle === "sw"
+                      ? { left: -12, bottom: -12, cursor: "nesw-resize" }
+                      : { right: -12, bottom: -12, cursor: "nwse-resize" };
 
                   return (
                     <button
                       key={handle}
                       type="button"
-                      className="absolute w-3 h-3 rounded-full bg-green-500 border border-white"
-                      style={positionStyle}
-                      onMouseDown={(event) => startDrag(handle, event)}
+                      className="absolute w-6 h-6 rounded-full bg-white/0 touch-none"
+                      style={{
+                        ...positionStyle,
+                        touchAction: "none",
+                      }}
+                      onPointerDown={(event) => startDrag(handle, event)}
                       aria-label={`调整裁切框 ${handle}`}
-                    />
+                    >
+                      <span className="absolute inset-[5px] rounded-full bg-green-500 border border-white" />
+                    </button>
                   );
                 })}
               </div>
