@@ -7,7 +7,7 @@ import {
 import {
   buildSourceImagePath,
   createDashScopeAsyncTask,
-  fileToDataUrl,
+  createSignedStorageUrl,
   getActiveGeneration,
   getProgressForStatus,
   getStyleSelection,
@@ -107,8 +107,13 @@ export async function POST(request: NextRequest) {
         contentType: image.type || "image/png",
       });
 
+      const sourceImageUrl = await createSignedStorageUrl({
+        supabaseAdmin,
+        path: sourceImagePath,
+      });
+
       const task = await createDashScopeAsyncTask({
-        imageInput: await fileToDataUrl(image),
+        imageInput: sourceImageUrl,
         prompt,
       });
 
