@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ReactNode } from "react";
 import { Nunito } from "next/font/google";
@@ -14,11 +14,17 @@ export const metadata: Metadata = {
   description: "可爱治愈系小工具集合站，陪你把灵感一点点变成现实。"
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN">
       <body
-        className={`min-h-screen bg-cream-50 text-slate-800 ${roundedFont.variable}`}
+        className={`min-h-screen overflow-x-hidden bg-cream-50 text-slate-800 ${roundedFont.variable}`}
       >
         {children}
       </body>

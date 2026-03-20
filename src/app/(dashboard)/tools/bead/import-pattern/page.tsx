@@ -330,7 +330,7 @@ export default function PatternImportPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-700">
                     行数
@@ -339,6 +339,7 @@ export default function PatternImportPage() {
                     type="number"
                     min="1"
                     max="256"
+                    inputMode="numeric"
                     value={rowCount}
                     onChange={(event) => {
                       setRowCount(clampGridSize(Number(event.target.value)));
@@ -356,6 +357,7 @@ export default function PatternImportPage() {
                     type="number"
                     min="1"
                     max="256"
+                    inputMode="numeric"
                     value={colCount}
                     onChange={(event) => {
                       setColCount(clampGridSize(Number(event.target.value)));
@@ -366,7 +368,7 @@ export default function PatternImportPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-700">
                     拼豆品牌
@@ -412,7 +414,7 @@ export default function PatternImportPage() {
                 <label className="text-xs font-medium text-slate-700">
                   识别方式
                 </label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -454,13 +456,14 @@ export default function PatternImportPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={handleRerunGridDetection}
                   disabled={cropping}
+                  className="w-full sm:w-auto"
                 >
                   <RefreshCcw className="w-4 h-4 mr-1" />
                   {cropping ? "识别中..." : "重新识别行列"}
@@ -470,6 +473,7 @@ export default function PatternImportPage() {
                   size="sm"
                   onClick={handleRecognize}
                   disabled={recognizing || cropping}
+                  className="w-full sm:w-auto"
                 >
                   {recognizing
                     ? recognitionMode === "ocr"

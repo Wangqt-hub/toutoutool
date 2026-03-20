@@ -111,6 +111,48 @@ async function readJsonResponse(response: Response) {
   return payload;
 }
 
+const HISTORY_CACHE_KEY = "bead-ai-history-cache-v1";
+
+type CachedHistoryPayload = {
+  etag: string | null;
+  items: AIGenerationHistoryItem[];
+};
+
+function readHistoryCache(): CachedHistoryPayload | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const raw = window.sessionStorage.getItem(HISTORY_CACHE_KEY);
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as CachedHistoryPayload;
+
+    if (!Array.isArray(parsed.items)) {
+      return null;
+    }
+
+    return {
+      etag: parsed.etag ?? null,
+      items: parsed.items,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeHistoryCache(payload: CachedHistoryPayload) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(payload));
+}
+
 function ProgressBar({
   progress,
   animated = false,
@@ -161,6 +203,7 @@ export default function AIGeneratePage() {
   const [historyItems, setHistoryItems] = useState<AIGenerationHistoryItem[]>(
     []
   );
+  const [historyEtag, setHistoryEtag] = useState<string | null>(null);
   const [optimisticItem, setOptimisticItem] =
     useState<AIGenerationHistoryItem | null>(null);
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
@@ -250,29 +293,58 @@ export default function AIGeneratePage() {
     }
   };
 
-  const loadHistory = async () => {
-    setHistoryLoading(true);
+  const applyLoadedHistory = async (items: AIGenerationHistoryItem[]) => {
+    setHistoryItems(items);
+    const activeItem = items.find((item) => isAIGenerationActive(item.status));
+
+    setActiveHistoryId(activeItem?.id || null);
+
+    if (activeItem) {
+      await restoreHistorySelection(
+        activeItem,
+        activeItem.status === "SUCCEEDED" ? "鍘嗗彶璁板綍鍘熷浘" : "褰撳墠浠诲姟鍘熷浘"
+      );
+      return;
+    }
+
+    setSelectedHistoryId(null);
+    setSourcePreviewUrl(null);
+    setSourcePreviewLabel(null);
+    setImageFile(null);
+    setImageMetadata(null);
+    resetPatternState();
+  };
+
+  const loadHistory = async (etag?: string | null) => {
+    if (!etag) {
+      setHistoryLoading(true);
+    }
 
     try {
       const response = await fetch("/api/ai-generate/history", {
         cache: "no-store",
+        headers: etag
+          ? {
+              "If-None-Match": etag,
+            }
+          : undefined,
       });
+
+      if (response.status === 304) {
+        return;
+      }
+
       const payload = await readJsonResponse(response);
       const items = (payload.data as AIGenerationHistoryItem[]) || [];
+      const nextEtag = response.headers.get("etag");
 
-      setHistoryItems(items);
+      setHistoryEtag(nextEtag);
+      writeHistoryCache({
+        etag: nextEtag,
+        items,
+      });
 
-      const activeItem = items.find((item) => isAIGenerationActive(item.status));
-      const preferredItem = activeItem || null;
-
-      setActiveHistoryId(activeItem?.id || null);
-
-      if (preferredItem) {
-        await restoreHistorySelection(
-          preferredItem,
-          preferredItem.status === "SUCCEEDED" ? "历史记录原图" : "当前任务原图"
-        );
-      }
+      await applyLoadedHistory(items);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -285,11 +357,32 @@ export default function AIGeneratePage() {
   };
 
   useEffect(() => {
-    loadHistory().catch(() => {
+    const cachedHistory = readHistoryCache();
+
+    if (cachedHistory) {
+      setHistoryEtag(cachedHistory.etag);
+      setHistoryLoading(false);
+      applyLoadedHistory(cachedHistory.items).catch(() => {
+        // Cached history hydration is best-effort.
+      });
+    }
+
+    loadHistory(cachedHistory?.etag ?? null).catch(() => {
       // Error state is already handled in loadHistory.
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (historyLoading) {
+      return;
+    }
+
+    writeHistoryCache({
+      etag: historyEtag,
+      items: historyItems,
+    });
+  }, [historyEtag, historyItems, historyLoading]);
 
   useEffect(() => {
     if (!activeHistoryId) {
@@ -387,7 +480,12 @@ export default function AIGeneratePage() {
       statusLabel: AI_GENERATION_STATUS_LABELS.UPLOADING_SOURCE,
       progressPercent: 10,
       sourceImageUrl: sourcePreviewUrl,
+      sourceImageProxyUrl: sourcePreviewUrl,
+      sourceThumbnailUrl: sourcePreviewUrl,
       aiImageUrl: null,
+      aiImageProxyUrl: null,
+      aiThumbnailUrl: null,
+      historyThumbnailUrl: sourcePreviewUrl,
       errorMessage: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -447,7 +545,7 @@ export default function AIGeneratePage() {
   };
 
   const handleCreatePattern = async () => {
-    if (!selectedCompletedHistory?.aiImageUrl) {
+    if (!selectedCompletedHistory?.aiImageProxyUrl) {
       setError("请先选择一条已完成的 AI 记录。");
       return;
     }
@@ -465,7 +563,7 @@ export default function AIGeneratePage() {
       };
 
       const result = await processImage(
-        selectedCompletedHistory.aiImageUrl,
+        selectedCompletedHistory.aiImageProxyUrl,
         settings,
         selectedPalette
       );
@@ -629,7 +727,7 @@ export default function AIGeneratePage() {
 
           {selectedHistory && (
             <Card className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <h3 className="text-sm font-semibold text-slate-900">
                     当前记录
@@ -656,7 +754,7 @@ export default function AIGeneratePage() {
                   <img
                     src={selectedHistory.aiImageUrl}
                     alt="AI 图片预览"
-                    className="w-full rounded-2xl border border-cream-100"
+                    className="max-h-[420px] w-full rounded-2xl border border-cream-100 bg-white object-contain"
                   />
                 </div>
               ) : (
@@ -715,7 +813,7 @@ export default function AIGeneratePage() {
           )}
 
           <Card className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <History className="w-4 h-4 text-slate-500" />
                 <h3 className="text-sm font-semibold text-slate-900">
@@ -759,15 +857,18 @@ export default function AIGeneratePage() {
                           : "cursor-not-allowed opacity-90"
                       }`}
                     >
-                      <div className="flex gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row">
                         <img
-                          src={item.aiImageUrl || item.sourceImageUrl}
+                          src={item.historyThumbnailUrl}
                           alt="历史记录缩略图"
-                          className="h-16 w-16 rounded-2xl border border-cream-100 object-cover flex-shrink-0"
+                          loading="lazy"
+                          decoding="async"
+                          fetchPriority="low"
+                          className="h-24 w-full rounded-2xl border border-cream-100 object-cover sm:h-16 sm:w-16 sm:flex-shrink-0"
                         />
                         <div className="min-w-0 flex-1 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-w-0 items-center gap-2">
                               {getHistoryItemIcon(item)}
                               <span className="truncate text-sm font-medium text-slate-900">
                                 {item.styleName}

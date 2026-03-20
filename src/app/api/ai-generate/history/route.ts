@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
 import { toAIGenerationHistoryItem } from "@/lib/bead/aiGeneration";
@@ -6,7 +6,27 @@ import { getLatestGenerations } from "@/lib/bead/aiGenerationServer";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+function buildHistoryETag(
+  generations: Array<{
+    id: string;
+    status: string;
+    updated_at: string;
+    ai_image_path: string | null;
+  }>
+): string {
+  const seed = generations
+    .map(
+      (generation) =>
+        `${generation.id}:${generation.status}:${generation.updated_at}:${
+          generation.ai_image_path || ""
+        }`
+    )
+    .join("|");
+
+  return `"${Buffer.from(seed || "empty").toString("base64url")}"`;
+}
+
+export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser();
 
@@ -26,11 +46,30 @@ export async function GET() {
       userId: user.id,
       limit: 10,
     });
+    const etag = buildHistoryETag(generations);
 
-    return NextResponse.json({
-      success: true,
-      data: generations.map(toAIGenerationHistoryItem),
-    });
+    if (request.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, no-cache, must-revalidate",
+        },
+      });
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: generations.map(toAIGenerationHistoryItem),
+      },
+      {
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (error) {
     return NextResponse.json(
       {

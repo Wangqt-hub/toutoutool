@@ -6,6 +6,9 @@ import {
   AI_GENERATION_ACTIVE_STATUSES,
   AI_GENERATION_BUCKET,
   AI_GENERATION_PROGRESS,
+  AI_GENERATION_STATUS_LABELS,
+  buildAIGenerationImageUrl,
+  type AIGenerationHistoryItem,
   type AIGenerationHistoryRow,
   type AIGenerationStatus,
 } from "@/lib/bead/aiGeneration";
@@ -276,16 +279,107 @@ export async function createSignedStorageUrl(options: {
   supabaseAdmin: SupabaseAdminClient;
   path: string;
   expiresIn?: number;
+  transform?: {
+    width?: number;
+    height?: number;
+    resize?: "cover" | "contain" | "fill";
+    quality?: number;
+    format?: "origin";
+  };
 }): Promise<string> {
   const { data, error } = await options.supabaseAdmin.storage
     .from(AI_GENERATION_BUCKET)
-    .createSignedUrl(options.path, options.expiresIn ?? 60 * 30);
+    .createSignedUrl(options.path, options.expiresIn ?? 60 * 30, {
+      transform: options.transform,
+    });
 
   if (error || !data?.signedUrl) {
     throw new Error(error?.message || "Failed to create signed image url.");
   }
 
   return data.signedUrl;
+}
+
+export async function buildAIGenerationHistoryItem(options: {
+  supabaseAdmin: SupabaseAdminClient;
+  row: AIGenerationHistoryRow;
+}): Promise<AIGenerationHistoryItem> {
+  const sourceImageProxyUrl = buildAIGenerationImageUrl(options.row.id, "source");
+  const aiImageProxyUrl = options.row.ai_image_path
+    ? buildAIGenerationImageUrl(options.row.id, "ai")
+    : null;
+  const [sourceImageUrl, sourceThumbnailUrl, aiImageUrl, aiThumbnailUrl] =
+    await Promise.all([
+      createSignedStorageUrl({
+        supabaseAdmin: options.supabaseAdmin,
+        path: options.row.source_image_path,
+        expiresIn: 60 * 60,
+        transform: {
+          width: 1200,
+          height: 1200,
+          resize: "contain",
+          quality: 82,
+        },
+      }),
+      createSignedStorageUrl({
+        supabaseAdmin: options.supabaseAdmin,
+        path: options.row.source_image_path,
+        expiresIn: 60 * 60,
+        transform: {
+          width: 160,
+          height: 160,
+          resize: "cover",
+          quality: 70,
+        },
+      }),
+      options.row.ai_image_path
+        ? createSignedStorageUrl({
+            supabaseAdmin: options.supabaseAdmin,
+            path: options.row.ai_image_path,
+            expiresIn: 60 * 60,
+            transform: {
+              width: 1200,
+              height: 1200,
+              resize: "contain",
+              quality: 82,
+            },
+          })
+        : Promise.resolve(null),
+      options.row.ai_image_path
+        ? createSignedStorageUrl({
+            supabaseAdmin: options.supabaseAdmin,
+            path: options.row.ai_image_path,
+            expiresIn: 60 * 60,
+            transform: {
+              width: 160,
+              height: 160,
+              resize: "cover",
+              quality: 70,
+            },
+          })
+        : Promise.resolve(null),
+    ]);
+
+  return {
+    id: options.row.id,
+    styleId: options.row.style_id,
+    styleName: options.row.style_name,
+    prompt: options.row.prompt,
+    status: options.row.status,
+    statusLabel: AI_GENERATION_STATUS_LABELS[options.row.status],
+    progressPercent: options.row.progress_percent,
+    sourceImageUrl,
+    sourceImageProxyUrl,
+    sourceThumbnailUrl,
+    aiImageUrl,
+    aiImageProxyUrl,
+    aiThumbnailUrl,
+    historyThumbnailUrl: aiThumbnailUrl || sourceThumbnailUrl,
+    errorMessage: options.row.error_message,
+    createdAt: options.row.created_at,
+    updatedAt: options.row.updated_at,
+    completedAt: options.row.completed_at,
+  };
 }
 
 export async function uploadAIResultFromUrl(options: {

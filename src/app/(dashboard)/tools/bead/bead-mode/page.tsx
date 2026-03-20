@@ -141,8 +141,8 @@ export default function BeadModePage() {
     <div className="min-h-screen bg-cream-50">
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-cream-100 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 sm:items-center">
               <Button
                 type="button"
                 variant="ghost"
@@ -154,11 +154,11 @@ export default function BeadModePage() {
                 <span className="hidden sm:inline">返回</span>
               </Button>
 
-              <div className="flex items-center gap-2">
+              <div className="min-w-0 flex items-center gap-2">
                 <Grid3X3 className="w-5 h-5 text-accent-brown" />
-                <div>
+                <div className="min-w-0">
                   <h1 className="text-lg font-bold text-slate-900">拼豆编辑器</h1>
-                  <p className="text-xs text-slate-500">
+                  <p className="break-words text-xs text-slate-500">
                     {gridData.grid[0]?.length ?? 0} × {gridData.grid.length} · 已识别
                     {filledCells} 颗豆
                   </p>
@@ -166,11 +166,12 @@ export default function BeadModePage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={() => setShowColorNumbers((previous) => !previous)}
                 title={showColorNumbers ? "隐藏色号" : "显示色号"}
               >
@@ -181,13 +182,20 @@ export default function BeadModePage() {
                 type="button"
                 variant="ghost"
                 size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={handleExportCSV}
                 title="导出 CSV"
               >
                 <Download className="w-4 h-4" />
               </Button>
 
-              <Button type="button" size="sm" variant="primary" onClick={handleSave}>
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                className="w-full sm:w-auto"
+                onClick={handleSave}
+              >
                 <CheckCircle2 className="w-4 h-4 mr-1" />
                 保存
               </Button>
@@ -196,13 +204,14 @@ export default function BeadModePage() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto p-4">
+      <main className="max-w-[1600px] mx-auto p-3 sm:p-4">
         <Card className="bg-white shadow-lg overflow-hidden">
           <BeadEditor
             grid={gridData.grid}
             palette={gridData.palette}
             brand={gridData.brand}
             onSave={handleSave}
+            showColorNumbers={showColorNumbers}
           />
         </Card>
 
@@ -221,15 +230,15 @@ export default function BeadModePage() {
             <div className="flex items-start gap-2">
               <span className="text-purple-600 font-bold">2.</span>
               <div>
-                <strong className="block mb-1">右键标记完成</strong>
-                <span>右键某个颜色的豆子，可以标记这个颜色已经完成。</span>
+                <strong className="block mb-1">拖动与缩放</strong>
+                <span>桌面端可滚轮缩放、拖动画布；手机端支持单指拖动、双指缩放。</span>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-green-600 font-bold">3.</span>
               <div>
-                <strong className="block mb-1">空白格子</strong>
-                <span>白色空格表示无豆格，不会计入统计，也不会导出成颜色。</span>
+                <strong className="block mb-1">标记完成</strong>
+                <span>桌面端右键或手机端长按某个颜色格子，可标记这个颜色已经完成。</span>
               </div>
             </div>
           </div>

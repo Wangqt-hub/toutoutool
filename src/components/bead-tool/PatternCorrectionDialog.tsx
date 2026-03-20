@@ -116,9 +116,9 @@ export function PatternCorrectionDialog({
   const scaleY = naturalHeight > 0 ? renderedHeight / naturalHeight : 1;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm p-4">
-      <div className="mx-auto h-full max-w-7xl rounded-[28px] bg-white shadow-2xl overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/65 p-2 backdrop-blur-sm sm:p-4">
+      <div className="mx-auto flex h-full max-h-full max-w-7xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl sm:rounded-[28px]">
+        <div className="flex flex-col items-start gap-3 border-b border-slate-100 px-[max(1rem,env(safe-area-inset-left))] py-4 pr-[max(1rem,env(safe-area-inset-right))] sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">OCR 失败格校对</h2>
             <p className="text-xs text-slate-500">
@@ -126,14 +126,20 @@ export function PatternCorrectionDialog({
               `A4 → A04`、`B03 → B3`。
             </p>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="self-end sm:self-auto"
+            onClick={onClose}
+          >
             <X className="w-4 h-4" />
           </Button>
         </div>
 
         <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-h-0 overflow-auto bg-slate-50 p-4">
-            <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="min-h-0 overflow-auto bg-slate-50 p-2 sm:p-4">
+            <div className="mb-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs text-slate-500">
                 总失败格 {failureCells.length} 个。红框表示待处理格子。
               </div>
@@ -142,6 +148,7 @@ export function PatternCorrectionDialog({
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowOnlyFailures((previous) => !previous)}
+                className="w-full sm:w-auto"
               >
                 {showOnlyFailures ? (
                   <EyeOff className="w-4 h-4 mr-1" />
@@ -152,7 +159,7 @@ export function PatternCorrectionDialog({
               </Button>
             </div>
 
-            <div className="relative inline-block rounded-3xl overflow-hidden border border-slate-200 bg-white">
+            <div className="relative inline-block max-w-full rounded-3xl overflow-hidden border border-slate-200 bg-white">
               <img
                 src={imageUrl}
                 alt="裁切后的图纸"
@@ -198,7 +205,7 @@ export function PatternCorrectionDialog({
             </div>
           </div>
 
-          <div className="border-l border-slate-100 p-5 space-y-4 overflow-auto">
+          <div className="overflow-auto border-t border-slate-100 p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-5 xl:border-l xl:border-t-0">
             {selectedCell ? (
               <>
                 <div className="space-y-1">
@@ -250,6 +257,7 @@ export function PatternCorrectionDialog({
                   <input
                     value={draftCode}
                     onChange={(event) => setDraftCode(event.target.value)}
+                    autoCapitalize="characters"
                     className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
                     placeholder="例如 H6、A4、B03"
                   />
@@ -264,7 +272,7 @@ export function PatternCorrectionDialog({
                   </div>
                 ) : null}
 
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Button type="button" size="sm" onClick={handleApply}>
                     应用色号
                   </Button>
@@ -290,7 +298,7 @@ export function PatternCorrectionDialog({
                     <h4 className="text-xs font-semibold text-slate-700">
                       失败格快速跳转
                     </h4>
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {failureCells.map((cell) => (
                         <button
                           key={`${cell.row}-${cell.col}`}

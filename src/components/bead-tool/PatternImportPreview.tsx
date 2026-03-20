@@ -1,11 +1,11 @@
 "use client";
 
+import { useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, Edit3 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { countBeans } from "@/lib/bead/beanStatistics";
-import { toBeadGrid } from "@/lib/bead/patternImport";
-import type { ImportedPatternCell } from "@/lib/bead/patternImport";
+import { toBeadGrid, type ImportedPatternCell } from "@/lib/bead/patternImport";
 import type { ColorBrand, PaletteColor } from "@/lib/bead/palette";
 
 interface PatternImportPreviewProps {
@@ -30,6 +30,15 @@ function getTextColor(hex: string): string {
   return getBrightness(hex) > 170 ? "#0F172A" : "#F8FAFC";
 }
 
+function getPreviewCellSize(maxDimension: number): number {
+  if (maxDimension <= 20) return 28;
+  if (maxDimension <= 36) return 22;
+  if (maxDimension <= 56) return 16;
+  if (maxDimension <= 84) return 12;
+  if (maxDimension <= 120) return 9;
+  return 7;
+}
+
 export function PatternImportPreview({
   cells,
   palette,
@@ -38,12 +47,122 @@ export function PatternImportPreview({
   onOpenCorrection,
   onEnterBeadMode,
 }: PatternImportPreviewProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const statistics =
     cells && palette ? countBeans(toBeadGrid(cells), palette) : null;
+  const previewMetrics = useMemo(() => {
+    if (!cells || cells.length === 0 || cells[0]?.length === 0) {
+      return null;
+    }
+
+    const rows = cells.length;
+    const cols = cells[0].length;
+    const cellSize = getPreviewCellSize(Math.max(rows, cols));
+    const padding = Math.max(10, Math.round(cellSize * 0.75));
+
+    return {
+      rows,
+      cols,
+      cellSize,
+      padding,
+      width: cols * cellSize + padding * 2,
+      height: rows * cellSize + padding * 2,
+    };
+  }, [cells]);
+
+  useEffect(() => {
+    if (!cells || !palette || !canvasRef.current || !previewMetrics) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(previewMetrics.width * dpr);
+    canvas.height = Math.round(previewMetrics.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, previewMetrics.width, previewMetrics.height);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, previewMetrics.width, previewMetrics.height);
+
+    const showLabels = previewMetrics.cellSize >= 16;
+    const gridLeft = previewMetrics.padding;
+    const gridTop = previewMetrics.padding;
+
+    for (let row = 0; row < previewMetrics.rows; row += 1) {
+      for (let col = 0; col < previewMetrics.cols; col += 1) {
+        const cell = cells[row][col];
+        const paletteColor =
+          cell.paletteIndex === null ? null : palette[cell.paletteIndex] ?? null;
+        const backgroundColor =
+          cell.state === "unresolved"
+            ? "#FCA5A5"
+            : paletteColor?.hex ?? "#FFFFFF";
+        const x = gridLeft + col * previewMetrics.cellSize;
+        const y = gridTop + row * previewMetrics.cellSize;
+
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(x, y, previewMetrics.cellSize, previewMetrics.cellSize);
+
+        if (showLabels && cell.state === "filled") {
+          const label = cell.matchedCode || cell.code || "";
+
+          if (label) {
+            ctx.fillStyle = getTextColor(backgroundColor);
+            ctx.font = `600 ${Math.max(
+              8,
+              Math.floor(previewMetrics.cellSize * 0.34)
+            )}px system-ui, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(
+              label,
+              x + previewMetrics.cellSize / 2,
+              y + previewMetrics.cellSize / 2 + 0.5
+            );
+          }
+        }
+      }
+    }
+
+    if (previewMetrics.cellSize >= 8) {
+      ctx.strokeStyle = "#CBD5E1";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+
+      for (let col = 0; col <= previewMetrics.cols; col += 1) {
+        const x = gridLeft + col * previewMetrics.cellSize + 0.5;
+        ctx.moveTo(x, gridTop);
+        ctx.lineTo(x, gridTop + previewMetrics.rows * previewMetrics.cellSize);
+      }
+
+      for (let row = 0; row <= previewMetrics.rows; row += 1) {
+        const y = gridTop + row * previewMetrics.cellSize + 0.5;
+        ctx.moveTo(gridLeft, y);
+        ctx.lineTo(gridLeft + previewMetrics.cols * previewMetrics.cellSize, y);
+      }
+
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#94A3B8";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(
+      gridLeft - 1,
+      gridTop - 1,
+      previewMetrics.cols * previewMetrics.cellSize + 2,
+      previewMetrics.rows * previewMetrics.cellSize + 2
+    );
+  }, [cells, palette, previewMetrics]);
 
   return (
     <Card className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-900">导入结果预览</h2>
           <p className="text-xs text-slate-500">
@@ -51,13 +170,14 @@ export function PatternImportPreview({
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={onOpenCorrection}
             disabled={!cells}
+            className="w-full sm:w-auto"
           >
             <Edit3 className="w-4 h-4 mr-1" />
             手动编辑图纸
@@ -67,13 +187,14 @@ export function PatternImportPreview({
             size="sm"
             onClick={onEnterBeadMode}
             disabled={!cells || unresolvedCount > 0}
+            className="w-full sm:w-auto"
           >
             进入拼豆编辑器
           </Button>
         </div>
       </div>
 
-      {!cells || !palette ? (
+      {!cells || !palette || !previewMetrics ? (
         <div className="flex h-64 items-center justify-center rounded-3xl border border-dashed border-cream-100 bg-cream-50/60 text-xs text-slate-500 text-center px-4">
           裁切并识别后，这里会显示导入结果。
         </div>
@@ -99,44 +220,15 @@ export function PatternImportPreview({
           ) : null}
 
           <div className="overflow-auto rounded-3xl border border-cream-100 bg-cream-50/60 p-3">
-            <div
-              className="inline-grid gap-px bg-slate-200"
-              style={{
-                gridTemplateColumns: `repeat(${cells[0]?.length ?? 0}, minmax(0, 1fr))`,
-              }}
-            >
-              {cells.flatMap((row, y) =>
-                row.map((cell, x) => {
-                  const color =
-                    cell.paletteIndex === null
-                      ? null
-                      : (palette[cell.paletteIndex] ?? null);
-                  const backgroundColor =
-                    cell.state === "unresolved"
-                      ? "#FCA5A5"
-                      : color?.hex ?? "#FFFFFF";
-                  const label =
-                    cell.state === "filled"
-                      ? cell.matchedCode || cell.code || ""
-                      : "";
-
-                  return (
-                    <div
-                      key={`${x}-${y}`}
-                      className="flex items-center justify-center text-[10px] font-medium"
-                      style={{
-                        width: 24,
-                        height: 24,
-                        backgroundColor,
-                        color: getTextColor(backgroundColor),
-                      }}
-                      title={`${y + 1} 行 ${x + 1} 列`}
-                    >
-                      {label}
-                    </div>
-                  );
-                })
-              )}
+            <div className="rounded-2xl bg-white p-3">
+              <canvas
+                ref={canvasRef}
+                className="block h-auto [image-rendering:auto]"
+                style={{
+                  width: `${previewMetrics.width}px`,
+                  maxWidth: "100%",
+                }}
+              />
             </div>
           </div>
 

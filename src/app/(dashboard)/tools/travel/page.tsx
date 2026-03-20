@@ -165,7 +165,7 @@ export default function TravelPlannerPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-700">
                   出发日期
@@ -190,7 +190,7 @@ export default function TravelPlannerPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-700">
                   预算感觉
@@ -284,6 +284,7 @@ export default function TravelPlannerPage() {
                 size="sm"
                 onClick={handleSave}
                 disabled={!itinerary || saving}
+                className="w-full sm:w-auto"
               >
                 {saving ? "保存中…" : "保存到账号"}
               </Button>

@@ -40,7 +40,12 @@ export interface AIGenerationHistoryItem {
   statusLabel: string;
   progressPercent: number;
   sourceImageUrl: string;
+  sourceImageProxyUrl: string;
+  sourceThumbnailUrl: string;
   aiImageUrl: string | null;
+  aiImageProxyUrl: string | null;
+  aiThumbnailUrl: string | null;
+  historyThumbnailUrl: string;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
@@ -102,6 +107,15 @@ export function buildAIGenerationImageUrl(
 export function toAIGenerationHistoryItem(
   row: AIGenerationHistoryRow
 ): AIGenerationHistoryItem {
+  const sourceImageProxyUrl = buildAIGenerationImageUrl(row.id, "source");
+  const aiImageProxyUrl = row.ai_image_path
+    ? buildAIGenerationImageUrl(row.id, "ai")
+    : null;
+  const aiImageUrl = aiImageProxyUrl;
+  const aiThumbnailUrl = aiImageProxyUrl;
+  const sourceImageUrl = sourceImageProxyUrl;
+  const sourceThumbnailUrl = sourceImageProxyUrl;
+
   return {
     id: row.id,
     styleId: row.style_id,
@@ -110,10 +124,13 @@ export function toAIGenerationHistoryItem(
     status: row.status,
     statusLabel: AI_GENERATION_STATUS_LABELS[row.status],
     progressPercent: row.progress_percent,
-    sourceImageUrl: buildAIGenerationImageUrl(row.id, "source"),
-    aiImageUrl: row.ai_image_path
-      ? buildAIGenerationImageUrl(row.id, "ai")
-      : null,
+    sourceImageUrl,
+    sourceImageProxyUrl,
+    sourceThumbnailUrl,
+    aiImageUrl,
+    aiImageProxyUrl,
+    aiThumbnailUrl,
+    historyThumbnailUrl: aiThumbnailUrl || sourceThumbnailUrl,
     errorMessage: row.error_message,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

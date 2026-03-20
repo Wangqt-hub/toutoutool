@@ -70,7 +70,7 @@ export default function IdeaBoxPage() {
             有什么想实现的小工具、功能或者脑洞，都可以写在这里。也许下一个上线的，就是你的点子。
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-start sm:items-center gap-3">
           <CapybaraHero variant="figure" size="sm" />
           <p className="text-[11px] text-slate-500 max-w-[160px]">
             头头会定期翻看这个箱子，挑选适合的灵感慢慢做出来。
