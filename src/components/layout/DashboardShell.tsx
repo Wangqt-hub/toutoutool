@@ -23,9 +23,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }, [open]);
 
   return (
-    <div className="min-h-screen bg-cream-50">
-      <header className="border-b border-cream-100 bg-white/70 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.94),rgba(255,247,237,0.92)_36%,rgba(255,251,235,0.88)_100%)]">
+      <header className="sticky top-0 z-30 border-b border-white/80 bg-white/72 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-5 lg:px-8">
           <Link href="/tools" className="flex items-center gap-2">
             <div className="h-9 w-9">
               <CapybaraHero variant="figure" size="xs" />
@@ -44,25 +44,25 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <nav className="hidden md:flex items-center gap-2 text-xs md:text-sm">
             <Link
               href="/tools"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
               工具首页
             </Link>
             <Link
               href="/tools/bead"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
               拼豆工具
             </Link>
             <Link
               href="/tools/travel"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
               旅行计划
             </Link>
             <Link
               href="/tools/ideas"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
               奇思妙想箱
             </Link>
@@ -78,7 +78,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </div>
             <button
               type="button"
-              className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-cream-100 bg-cream-50/80 text-slate-700"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/82 text-slate-700 shadow-sm md:hidden"
               onClick={() => setOpen((prev) => !prev)}
               aria-label="打开导航"
             >
@@ -100,7 +100,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             className="absolute inset-0 bg-black/20"
             onClick={() => setOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 w-[85vw] max-w-64 overflow-y-auto bg-cream-50 border-r border-cream-100 shadow-[0_12px_40px_rgba(0,0,0,0.18)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] flex flex-col gap-4">
+          <aside className="absolute inset-y-0 left-0 w-[88vw] max-w-72 overflow-y-auto border-r border-white/80 bg-white/94 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_18px_50px_rgba(0,0,0,0.18)] backdrop-blur flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="h-8 w-8">
@@ -163,7 +163,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main className="mx-auto max-w-5xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <main className="mx-auto max-w-6xl px-3 py-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-6 lg:px-8 lg:py-8">
         {children}
       </main>
     </div>
