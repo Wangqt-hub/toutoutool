@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import {
-  getAvailableColorCounts,
   getAvailableBrands,
+  getAvailableColorCounts,
   type ColorBrand,
 } from "@/lib/bead/palette";
 import type { PixelAlgorithm } from "@/lib/bead/imageProcessor";
@@ -32,17 +32,17 @@ const ALGORITHM_OPTIONS: Array<{
   {
     value: "standard",
     label: "标准还原",
-    description: "高质量缩放后直接匹配色卡，适合大多数图片。",
+    description: "保持原来的逐像素缩放取色，适合大多数图片。",
   },
   {
     value: "edge-enhanced",
     label: "轮廓增强",
-    description: "强化边缘和局部对比，轮廓会更清晰。",
+    description: "保持原来的边缘强化取色，轮廓会更清晰。",
   },
   {
-    value: "dithered",
-    label: "复古抖动",
-    description: "加入抖动颗粒感，适合想要更明显像素风的图。",
+    value: "clustered",
+    label: "主色聚类",
+    description: "按最终行列分格，每格提取主色后再匹配色卡。",
   },
 ];
 
@@ -148,9 +148,8 @@ export function PatternSettings({
   return (
     <Card className="space-y-4">
       <div className="space-y-2">
-        <label className="text-xs font-medium text-slate-700 flex items-center gap-2">
-          <span>📏</span>
-          图纸设置
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+          <span>尺寸设置</span>
         </label>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -187,14 +186,14 @@ export function PatternSettings({
               disabled={maintainAspectRatio}
               className={`w-full rounded-2xl border px-3 py-2 text-sm outline-none ${
                 maintainAspectRatio
-                  ? "border-cream-100 bg-slate-100 text-slate-400 cursor-not-allowed"
+                  ? "cursor-not-allowed border-cream-100 bg-slate-100 text-slate-400"
                   : "border-cream-100 bg-cream-50/60 focus:ring-2 focus:ring-accent-brown"
               }`}
             />
           </div>
         </div>
 
-        <label className="flex items-center gap-2 mt-2 text-xs text-slate-700">
+        <label className="mt-2 flex items-center gap-2 text-xs text-slate-700">
           <input
             type="checkbox"
             checked={maintainAspectRatio}
@@ -203,16 +202,14 @@ export function PatternSettings({
             }
             className="rounded border-cream-100 text-accent-brown focus:ring-accent-brown"
           />
-          保持原图宽高比例
+          保持原图宽高比
         </label>
       </div>
 
       <div className="h-px bg-cream-100" />
 
       <div className="space-y-2">
-        <label className="text-xs font-medium text-slate-700">
-          转换算法
-        </label>
+        <label className="text-xs font-medium text-slate-700">转换算法</label>
         <div className="grid grid-cols-1 gap-2">
           {ALGORITHM_OPTIONS.map((option) => (
             <button
@@ -228,7 +225,7 @@ export function PatternSettings({
               <p className="text-sm font-medium text-slate-800">
                 {option.label}
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">
+              <p className="mt-1 text-[11px] text-slate-500">
                 {option.description}
               </p>
             </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 import { LogoutButton } from "@/components/ui/logout-button";
@@ -8,6 +8,8 @@ import { MembershipPreviewButton } from "@/components/ui/membership-preview";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(76);
 
   useEffect(() => {
     if (!open) {
@@ -22,53 +24,101 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     };
   }, [open]);
 
+  useEffect(() => {
+    const value = open ? "true" : "false";
+    document.documentElement.dataset.dashboardDrawerOpen = value;
+    document.body.dataset.dashboardDrawerOpen = value;
+
+    return () => {
+      delete document.documentElement.dataset.dashboardDrawerOpen;
+      delete document.body.dataset.dashboardDrawerOpen;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const element = headerRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    const updateHeight = () => {
+      const nextHeight = Math.ceil(element.getBoundingClientRect().height);
+      document.documentElement.style.setProperty(
+        "--dashboard-header-height",
+        `${nextHeight}px`
+      );
+      setHeaderHeight((previous) =>
+        previous === nextHeight ? previous : nextHeight
+      );
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateHeight);
+
+      return () => {
+        window.removeEventListener("resize", updateHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+
+    return () => {
+      document.documentElement.style.removeProperty("--dashboard-header-height");
+      observer.disconnect();
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-cream-50">
-      <header className="border-b border-cream-100 bg-white/70 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.94),rgba(255,247,237,0.92)_36%,rgba(255,251,235,0.88)_100%)]">
+      <header
+        ref={headerRef}
+        data-dashboard-header="true"
+        className="fixed left-0 right-0 top-0 z-40 border-b border-slate-200 bg-white"
+      >
+        <div className="mx-auto flex max-w-[1680px] items-center justify-between px-2.5 py-3 sm:px-4 lg:px-8">
           <Link href="/tools" className="flex items-center gap-2">
             <div className="h-9 w-9">
               <CapybaraHero variant="figure" size="xs" />
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold text-slate-900">
-                头头工具
-              </span>
+              <span className="text-sm font-semibold text-slate-900">头头工具</span>
               <span className="text-[10px] text-slate-500">
                 把小脑洞变成小工具
               </span>
             </div>
           </Link>
 
-          {/* 桌面端：顶部导航 */}
-          <nav className="hidden md:flex items-center gap-2 text-xs md:text-sm">
+          <nav className="hidden items-center gap-2 text-xs md:flex md:text-sm">
             <Link
               href="/tools"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
               工具首页
             </Link>
             <Link
               href="/tools/bead"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
               拼豆工具
             </Link>
             <Link
               href="/tools/travel"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
-              旅行计划
+              旅行规划
             </Link>
             <Link
               href="/tools/ideas"
-              className="rounded-full px-3 py-1 text-slate-700 hover:bg-cream-100"
+              className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
-              奇思妙想箱
+              灵感箱
             </Link>
           </nav>
 
-          {/* 右侧操作区：桌面端显示会员+退出，移动端只显示菜单按钮 */}
           <div className="flex items-center gap-2">
             <div className="hidden md:inline-flex">
               <MembershipPreviewButton />
@@ -78,7 +128,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </div>
             <button
               type="button"
-              className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-cream-100 bg-cream-50/80 text-slate-700"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm md:hidden"
               onClick={() => setOpen((prev) => !prev)}
               aria-label="打开导航"
             >
@@ -93,32 +143,28 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* 移动端：侧边抽屉导航 */}
-      {open && (
-        <div className="fixed inset-0 z-30 md:hidden overscroll-contain">
+      {open ? (
+        <div className="fixed inset-0 z-50 overscroll-contain md:hidden">
           <div
-            className="absolute inset-0 bg-black/20"
+            className="absolute inset-0 bg-slate-950/72"
             onClick={() => setOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 w-[85vw] max-w-64 overflow-y-auto bg-cream-50 border-r border-cream-100 shadow-[0_12px_40px_rgba(0,0,0,0.18)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] flex flex-col gap-4">
+          <aside className="absolute inset-y-0 right-0 flex w-[78vw] max-w-64 flex-col gap-4 overflow-y-auto border-l border-slate-200 bg-white p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[-18px_0_50px_rgba(0,0,0,0.18)]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="h-8 w-8">
                   <CapybaraHero variant="figure" size="xs" />
                 </div>
                 <div className="flex flex-col leading-tight">
-                  <span className="text-xs font-semibold text-slate-900">
-                    头头工具
-                  </span>
-                  <span className="text-[10px] text-slate-500">
-                    小工具抽屉
-                  </span>
+                  <span className="text-xs font-semibold text-slate-900">头头工具</span>
+                  <span className="text-[10px] text-slate-500">移动端导航</span>
                 </div>
               </div>
               <button
                 type="button"
-                className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-white/80 border border-cream-100 text-slate-700 text-xs"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-xs text-slate-700"
                 onClick={() => setOpen(false)}
+                aria-label="关闭导航"
               >
                 ×
               </button>
@@ -144,14 +190,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 className="rounded-2xl px-3 py-2 text-slate-700 hover:bg-cream-100"
                 onClick={() => setOpen(false)}
               >
-                旅行计划
+                旅行规划
               </Link>
               <Link
                 href="/tools/ideas"
                 className="rounded-2xl px-3 py-2 text-slate-700 hover:bg-cream-100"
                 onClick={() => setOpen(false)}
               >
-                奇思妙想箱
+                灵感箱
               </Link>
             </nav>
 
@@ -161,12 +207,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </div>
           </aside>
         </div>
-      )}
+      ) : null}
 
-      <main className="mx-auto max-w-5xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <main
+        className="mx-auto max-w-[1680px] px-2.5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-5 lg:px-8 lg:py-7"
+        style={{ paddingTop: `${headerHeight + 16}px` }}
+      >
         {children}
       </main>
     </div>
   );
 }
-

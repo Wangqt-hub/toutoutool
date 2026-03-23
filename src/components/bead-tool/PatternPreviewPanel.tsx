@@ -5,7 +5,11 @@ import { Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { countBeans } from "@/lib/bead/beanStatistics";
-import { getBrandCode, type ColorBrand, type PaletteColor } from "@/lib/bead/palette";
+import {
+  getBrandCode,
+  type ColorBrand,
+  type PaletteColor,
+} from "@/lib/bead/palette";
 import type { BeadGrid } from "@/lib/bead/types";
 import {
   downloadCanvasAsPng,
@@ -71,22 +75,19 @@ export function PatternPreviewPanel({
       showColorNumbers,
     });
 
-    downloadCanvasAsPng(
-      canvasRef.current,
-      `${fileNameBase}-${Date.now()}.png`
-    );
+    downloadCanvasAsPng(canvasRef.current, `${fileNameBase}-${Date.now()}.png`);
   };
 
   return (
-    <Card className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+    <Card className="space-y-3 p-3 sm:p-4 xl:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-base font-semibold text-slate-900">拼豆图纸预览</h2>
-          <p className="text-xs text-slate-500">每个小方块代表一颗拼豆</p>
+          <p className="text-xs text-slate-500">每个小格代表一颗拼豆。</p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-xs text-slate-700 flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1 text-xs text-slate-700">
             <input
               type="checkbox"
               checked={showColorNumbers}
@@ -102,7 +103,7 @@ export function PatternPreviewPanel({
             onClick={handleDownload}
             disabled={!grid || !palette}
           >
-            <Download className="w-4 h-4 mr-1" />
+            <Download className="mr-1 h-4 w-4" />
             保存 PNG
           </Button>
         </div>
@@ -111,37 +112,36 @@ export function PatternPreviewPanel({
       {!grid || !palette ? (
         emptyState
       ) : (
-        <div className="space-y-4">
-          <div className="rounded-3xl border border-cream-100 bg-cream-50/60 p-3">
-            <div className="rounded-2xl bg-white p-3">
-              <canvas
-                ref={canvasRef}
-                className="block w-full h-auto max-h-none"
-              />
+        <div className="space-y-3">
+          <div className="rounded-[24px] border border-cream-100 bg-cream-50/60 p-2.5">
+            <div className="rounded-[18px] bg-white p-2.5">
+              <canvas ref={canvasRef} className="block h-auto w-full max-h-none" />
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-            <span>网格：{grid[0].length} × {grid.length}</span>
+            <span>
+              网格：{grid[0].length} × {grid.length}
+            </span>
             <span>·</span>
-            <span>颜色数：{statistics?.colorStats.length ?? 0}</span>
+            <span>颜色：{statistics?.colorStats.length ?? 0}</span>
             <span>·</span>
             <span>品牌：{brand}</span>
             <span>·</span>
-            <span>总用量：{statistics?.totalBeans ?? 0}</span>
+            <span>总数：{statistics?.totalBeans ?? 0}</span>
           </div>
 
-          {statistics && (
+          {statistics ? (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-slate-900">色号统计</h3>
                 <span className="text-xs text-slate-500">
                   共 {statistics.colorStats.length} 种颜色
                 </span>
               </div>
 
-              <div className="max-h-64 overflow-y-auto pr-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+              <div className="max-h-60 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {statistics.colorStats.map((stat) => {
                     const brandCode =
                       getBrandCode(stat.color, brand) || getColorLabel(stat.color.id);
@@ -153,14 +153,14 @@ export function PatternPreviewPanel({
                       >
                         <div className="flex items-center gap-3">
                           <span
-                            className="h-8 w-8 rounded-xl border border-cream-100 flex-shrink-0"
+                            className="h-8 w-8 flex-shrink-0 rounded-xl border border-cream-100"
                             style={{ backgroundColor: stat.color.hex }}
                           />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold text-slate-800">
                               {brandCode}
                             </p>
-                            <p className="truncate text-[11px] text-slate-500 uppercase">
+                            <p className="truncate text-[11px] uppercase text-slate-500">
                               {stat.color.hex}
                             </p>
                           </div>
@@ -176,7 +176,7 @@ export function PatternPreviewPanel({
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
           {footer}
         </div>

@@ -14,7 +14,6 @@ interface PatternImportPreviewProps {
   brand: ColorBrand;
   unresolvedCount: number;
   onOpenCorrection: () => void;
-  onEnterBeadMode: () => void;
 }
 
 function getBrightness(hex: string): number {
@@ -45,7 +44,6 @@ export function PatternImportPreview({
   brand,
   unresolvedCount,
   onOpenCorrection,
-  onEnterBeadMode,
 }: PatternImportPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const statistics =
@@ -181,15 +179,6 @@ export function PatternImportPreview({
           >
             <Edit3 className="w-4 h-4 mr-1" />
             手动编辑图纸
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={onEnterBeadMode}
-            disabled={!cells || unresolvedCount > 0}
-            className="w-full sm:w-auto"
-          >
-            进入拼豆编辑器
           </Button>
         </div>
       </div>

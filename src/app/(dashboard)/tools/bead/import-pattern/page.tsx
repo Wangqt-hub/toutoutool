@@ -2,17 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  FileImage,
-  RefreshCcw,
-  ScanLine,
-} from "lucide-react";
+import { FileImage, RefreshCcw, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ImageUploadStep, type ImageMetadata } from "@/components/bead-tool/ImageUploadStep";
+import {
+  BeadWorkflowShell,
+  type BeadWorkflowStep,
+} from "@/components/bead-tool/BeadWorkflowShell";
+import { ImageUploadStep } from "@/components/bead-tool/ImageUploadStep";
 import { PatternCorrectionDialog } from "@/components/bead-tool/PatternCorrectionDialog";
 import { PatternCropper } from "@/components/bead-tool/PatternCropper";
+import { PatternGridOverlayPreview } from "@/components/bead-tool/PatternGridOverlayPreview";
 import { PatternImportPreview } from "@/components/bead-tool/PatternImportPreview";
 import {
   applyGridSizeOverride,
@@ -23,7 +23,6 @@ import {
   toBeadGrid,
   type GridGeometry,
   type ImportedPatternCell,
-  type ImportRecognitionMode,
 } from "@/lib/bead/patternImport";
 import {
   getAvailableBrands,
@@ -48,16 +47,14 @@ export default function PatternImportPage() {
     [availableColorCounts]
   );
 
+  const [currentStep, setCurrentStep] = useState(0);
   const [sourceImageUrl, setSourceImageUrl] = useState<string | null>(null);
-  const [imageMetadata, setImageMetadata] = useState<ImageMetadata | null>(null);
   const [croppedImageUrl, setCroppedImageUrl] = useState<string | null>(null);
   const [geometry, setGeometry] = useState<GridGeometry | null>(null);
   const [rowCount, setRowCount] = useState(0);
   const [colCount, setColCount] = useState(0);
   const [brand, setBrand] = useState<ColorBrand>("MARD");
   const [colorCount, setColorCount] = useState<number>(defaultColorCount);
-  const [recognitionMode, setRecognitionMode] =
-    useState<ImportRecognitionMode>("color");
   const [cells, setCells] = useState<ImportedPatternCell[][] | null>(null);
   const [palette, setPalette] = useState<PaletteColor[] | null>(null);
   const [unresolvedCount, setUnresolvedCount] = useState(0);
@@ -72,6 +69,14 @@ export default function PatternImportPage() {
     setUnresolvedCount(0);
     setShowCorrectionDialog(false);
   };
+
+  const adjustedGeometry = useMemo(
+    () =>
+      geometry && rowCount > 0 && colCount > 0
+        ? applyGridSizeOverride(geometry, rowCount, colCount)
+        : null,
+    [colCount, geometry, rowCount]
+  );
 
   const handleCropConfirm = async (cropRect: {
     x: number;
@@ -95,11 +100,12 @@ export default function PatternImportPage() {
       setGeometry(nextGeometry);
       setRowCount(nextGeometry.rowCount);
       setColCount(nextGeometry.colCount);
+      setCurrentStep(2);
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "裁切后自动识别行列失败，请重新裁切到像素格区域。"
+          : "裁切完成后自动识别网格失败，请重新选择图纸边缘。"
       );
     } finally {
       setCropping(false);
@@ -124,7 +130,7 @@ export default function PatternImportPage() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "重新识别行列失败，请检查裁切区域。"
+          : "重新识别行列失败，请检查裁切范围。"
       );
     } finally {
       setCropping(false);
@@ -132,8 +138,8 @@ export default function PatternImportPage() {
   };
 
   const handleRecognize = async () => {
-    if (!croppedImageUrl || !geometry || rowCount <= 0 || colCount <= 0) {
-      setError("请先完成裁切，并确认行列数。");
+    if (!croppedImageUrl || !adjustedGeometry || rowCount <= 0 || colCount <= 0) {
+      setError("请先完成裁切，并确认行数和列数。");
       return;
     }
 
@@ -141,12 +147,10 @@ export default function PatternImportPage() {
     setError(null);
 
     try {
-      const adjustedGeometry = applyGridSizeOverride(geometry, rowCount, colCount);
       const result = await recognizeImportedPattern({
         imageSource: croppedImageUrl,
         brand,
         colorCount,
-        mode: recognitionMode,
         geometry: adjustedGeometry,
       });
 
@@ -154,13 +158,10 @@ export default function PatternImportPage() {
       setCells(result.cells);
       setPalette(result.palette);
       setUnresolvedCount(result.unresolvedCount);
-
-      if (recognitionMode === "ocr" && result.unresolvedCount > 0) {
-        setShowCorrectionDialog(true);
-      }
+      setCurrentStep(3);
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "识别失败，请稍后重试。"
+        cause instanceof Error ? cause.message : "识别失败，请稍后再试。"
       );
     } finally {
       setRecognizing(false);
@@ -231,9 +232,7 @@ export default function PatternImportPage() {
     }
 
     if (unresolvedCount > 0) {
-      setError(
-        `还有 ${unresolvedCount} 个失败格未修正，不能进入后续拼豆编辑器。`
-      );
+      setError(`还有 ${unresolvedCount} 个未识别格，请先修正后再进入拼豆模式。`);
       setShowCorrectionDialog(true);
       return;
     }
@@ -250,267 +249,324 @@ export default function PatternImportPage() {
     router.push("/tools/bead/bead-mode");
   };
 
-  return (
-    <div className="space-y-6">
-      <section className="flex flex-col gap-2">
+  const steps = useMemo<BeadWorkflowStep[]>(
+    () => [
+      {
+        id: "upload",
+        label: "上传图纸",
+        caption: "导入原图",
+        available: true,
+        complete: Boolean(sourceImageUrl),
+      },
+      {
+        id: "crop",
+        label: "裁切网格",
+        caption: "框选图纸区域",
+        available: Boolean(sourceImageUrl),
+        complete: Boolean(croppedImageUrl),
+      },
+      {
+        id: "recognize",
+        label: "识别参数",
+        caption: "调整行列和色卡",
+        available: Boolean(croppedImageUrl && geometry),
+        complete: Boolean(cells && palette),
+      },
+      {
+        id: "review",
+        label: "查看结果",
+        caption: "检查导入结果",
+        available: Boolean(cells && palette),
+        complete: Boolean(cells && palette && unresolvedCount === 0),
+      },
+    ],
+    [cells, croppedImageUrl, geometry, palette, sourceImageUrl, unresolvedCount]
+  );
+
+  const stageCopy = [
+    {
+      eyebrow: "Step 1 / 4",
+      title: "上传图纸",
+    },
+    {
+      eyebrow: "Step 2 / 4",
+      title: "裁切网格",
+    },
+    {
+      eyebrow: "Step 3 / 4",
+      title: "识别参数",
+    },
+    {
+      eyebrow: "Step 4 / 4",
+      title: "查看结果",
+    },
+  ][currentStep];
+
+  const preview =
+    currentStep === 3 && cells && palette ? (
+      <PatternImportPreview
+        cells={cells}
+        palette={palette}
+        brand={brand}
+        unresolvedCount={unresolvedCount}
+        onOpenCorrection={() => setShowCorrectionDialog(true)}
+      />
+    ) : undefined;
+
+  const footer =
+    currentStep === 0 ? (
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          size="lg"
+          onClick={() => setCurrentStep(1)}
+          disabled={!sourceImageUrl}
+        >
+          下一步
+        </Button>
+      </div>
+    ) : currentStep === 1 ? (
+      <div className="flex justify-start">
         <Button
           type="button"
           variant="ghost"
-          size="sm"
-          onClick={() => router.push("/tools/bead")}
-          className="w-fit -ml-2"
+          size="lg"
+          onClick={() => setCurrentStep(0)}
         >
-          <ArrowLeft className="w-4 h-4" />
-          <span>返回</span>
+          返回上传
         </Button>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-slate-900">拼豆图纸导入</h1>
-          <FileImage className="w-6 h-6 text-green-500" />
+      </div>
+    ) : currentStep === 2 ? (
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <Button
+          type="button"
+          variant="ghost"
+          size="lg"
+          onClick={() => setCurrentStep(1)}
+        >
+          返回裁切
+        </Button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            onClick={handleRerunGridDetection}
+            disabled={cropping}
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            {cropping ? "识别中..." : "重新识别行列"}
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            onClick={handleRecognize}
+            disabled={recognizing || cropping}
+          >
+            {recognizing ? "识别中..." : "开始识别"}
+          </Button>
         </div>
-        <p className="text-sm text-slate-600">
-          先裁切目标像素格区域，再自动识别行列数，最后按品牌、色数进行颜色识别或 OCR 识别。
-        </p>
-      </section>
+      </div>
+    ) : (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Button
+          type="button"
+          variant="ghost"
+          size="lg"
+          onClick={() => setCurrentStep(2)}
+        >
+          返回识别参数
+        </Button>
+        <Button
+          type="button"
+          size="lg"
+          onClick={handleEnterBeadMode}
+          disabled={!cells || !palette || unresolvedCount > 0}
+        >
+          进入拼豆模式
+        </Button>
+      </div>
+    );
 
-      {error ? (
-        <div className="bg-red-50 border border-red-100 rounded-3xl px-4 py-3 text-xs text-red-600">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-1 xl:grid-cols-[440px_minmax(0,1fr)] gap-4 items-start">
-        <div className="space-y-4">
+  return (
+    <>
+      <BeadWorkflowShell
+        title="导入现成图纸"
+        icon={FileImage}
+        accent="emerald"
+        steps={steps}
+        currentStep={currentStep}
+        onStepChange={(stepIndex) => {
+          if (steps[stepIndex]?.available !== false) {
+            setCurrentStep(stepIndex);
+          }
+        }}
+        onBack={() => router.push("/tools/bead")}
+        stageEyebrow={stageCopy.eyebrow}
+        stageTitle={stageCopy.title}
+        error={error}
+        preview={preview}
+        footer={footer}
+      >
+        {currentStep === 0 ? (
           <ImageUploadStep
-            onImageSelect={(url, _file, metadata) => {
+            previewUrl={sourceImageUrl}
+            previewLabel={sourceImageUrl ? "当前图纸" : null}
+            onImageSelect={(url) => {
               setSourceImageUrl(url);
-              setImageMetadata(metadata);
               setCroppedImageUrl(null);
               setGeometry(null);
               setRowCount(0);
               setColCount(0);
               setBrand("MARD");
               setColorCount(defaultColorCount);
-              setRecognitionMode("color");
               setError(null);
               resetRecognition();
+              setCurrentStep(1);
             }}
             onClear={() => {
               setSourceImageUrl(null);
-              setImageMetadata(null);
               setCroppedImageUrl(null);
               setGeometry(null);
               setRowCount(0);
               setColCount(0);
               setBrand("MARD");
               setColorCount(defaultColorCount);
-              setRecognitionMode("color");
               setError(null);
               resetRecognition();
+              setCurrentStep(0);
             }}
             onError={setError}
           />
+        ) : currentStep === 1 ? (
+          sourceImageUrl ? (
+            <PatternCropper imageUrl={sourceImageUrl} onConfirm={handleCropConfirm} />
+          ) : (
+            <Card className="border-dashed border-cream-100 bg-cream-50/70">
+              <p className="text-sm text-slate-600">请先上传图纸。</p>
+            </Card>
+          )
+        ) : currentStep === 2 ? (
+          <div className="space-y-4">
+            {croppedImageUrl && adjustedGeometry ? (
+              <PatternGridOverlayPreview
+                imageUrl={croppedImageUrl}
+                geometry={adjustedGeometry}
+                rowCount={rowCount}
+                colCount={colCount}
+              />
+            ) : null}
 
-          {sourceImageUrl ? (
-            <PatternCropper
-              imageUrl={sourceImageUrl}
-              onConfirm={handleCropConfirm}
-            />
-          ) : null}
-
-          {croppedImageUrl && geometry ? (
             <Card className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-medium text-slate-700 flex items-center gap-2">
-                  <ScanLine className="w-4 h-4 text-blue-500" />
-                  3. 确认行列与识别参数
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                  <ScanLine className="h-4 w-4 text-emerald-500" />
+                  识别参数
                 </label>
-                <p className="text-[11px] text-slate-500">
-                  自动检测结果：{geometry.rowCount} 行 × {geometry.colCount} 列。
-                  检测不准时可手动修改。
-                </p>
-              </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">
-                    行数
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="256"
-                    inputMode="numeric"
-                    value={rowCount}
-                    onChange={(event) => {
-                      setRowCount(clampGridSize(Number(event.target.value)));
-                      resetRecognition();
-                    }}
-                    className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
-                  />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">行数</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="256"
+                      inputMode="numeric"
+                      value={rowCount}
+                      onChange={(event) => {
+                        setRowCount(clampGridSize(Number(event.target.value)));
+                        resetRecognition();
+                      }}
+                      className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">列数</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="256"
+                      inputMode="numeric"
+                      value={colCount}
+                      onChange={(event) => {
+                        setColCount(clampGridSize(Number(event.target.value)));
+                        resetRecognition();
+                      }}
+                      className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">
-                    列数
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="256"
-                    inputMode="numeric"
-                    value={colCount}
-                    onChange={(event) => {
-                      setColCount(clampGridSize(Number(event.target.value)));
-                      resetRecognition();
-                    }}
-                    className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
-                  />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">拼豆品牌</label>
+                    <select
+                      value={brand}
+                      onChange={(event) => {
+                        setBrand(event.target.value as ColorBrand);
+                        resetRecognition();
+                      }}
+                      className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
+                    >
+                      {brands.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700">
+                      颜色数量
+                    </label>
+                    <select
+                      value={colorCount}
+                      onChange={(event) => {
+                        setColorCount(Number(event.target.value));
+                        resetRecognition();
+                      }}
+                      className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
+                    >
+                      {availableColorCounts.map((count) => (
+                        <option key={count} value={count}>
+                          {count} 色
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">
-                    拼豆品牌
-                  </label>
-                  <select
-                    value={brand}
-                    onChange={(event) => {
-                      setBrand(event.target.value as ColorBrand);
-                      resetRecognition();
-                    }}
-                    className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
-                  >
-                    {brands.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-700">
-                    颜色数量
-                  </label>
-                  <select
-                    value={colorCount}
-                    onChange={(event) => {
-                      setColorCount(Number(event.target.value));
-                      resetRecognition();
-                    }}
-                    className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent-brown"
-                  >
-                    {availableColorCounts.map((count) => (
-                      <option key={count} value={count}>
-                        {count} 色
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-700">
-                  识别方式
-                </label>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRecognitionMode("color");
-                      resetRecognition();
-                    }}
-                    className={`flex-1 rounded-2xl border px-3 py-2 text-xs font-medium ${
-                      recognitionMode === "color"
-                        ? "border-accent-brown bg-accent-brown/10 text-accent-brown"
-                        : "border-cream-100 bg-cream-50/60 text-slate-600"
-                    }`}
-                  >
-                    颜色识别
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRecognitionMode("ocr");
-                      resetRecognition();
-                    }}
-                    className={`flex-1 rounded-2xl border px-3 py-2 text-xs font-medium ${
-                      recognitionMode === "ocr"
-                        ? "border-accent-brown bg-accent-brown/10 text-accent-brown"
-                        : "border-cream-100 bg-cream-50/60 text-slate-600"
-                    }`}
-                  >
-                    OCR 识别
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-cream-50/70 border border-cream-100 px-3 py-3 text-[11px] text-slate-500 space-y-1">
-                <p>
-                  颜色识别和 OCR 匹配都会只在当前选择的 `{colorCount}` 色色卡范围内进行。
-                </p>
-                <p>
-                  OCR 会按当前品牌和色数做校验，并支持宽松匹配，例如 MARD 的
-                  `A4` 会匹配 `A04`，漫漫的 `B03` 会匹配 `B3`。
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRerunGridDetection}
-                  disabled={cropping}
-                  className="w-full sm:w-auto"
-                >
-                  <RefreshCcw className="w-4 h-4 mr-1" />
-                  {cropping ? "识别中..." : "重新识别行列"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleRecognize}
-                  disabled={recognizing || cropping}
-                  className="w-full sm:w-auto"
-                >
-                  {recognizing
-                    ? recognitionMode === "ocr"
-                      ? "OCR 识别中..."
-                      : "颜色识别中..."
-                    : recognitionMode === "ocr"
-                      ? "开始 OCR 识别"
-                      : "开始颜色识别"}
-                </Button>
               </div>
             </Card>
-          ) : null}
-
-          {imageMetadata ? (
-            <Card className="space-y-2">
-              <div className="text-xs text-slate-700 font-medium">原图信息</div>
-              <div className="text-[11px] text-slate-500">
-                原始尺寸：{imageMetadata.width} × {imageMetadata.height}
-              </div>
-              {croppedImageUrl && geometry ? (
-                <div className="text-[11px] text-slate-500">
-                  当前裁切后自动检测：{geometry.rowCount} 行 × {geometry.colCount} 列
-                </div>
-              ) : null}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                网格
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {cells?.[0]?.length ?? 0} × {cells?.length ?? 0}
+              </p>
             </Card>
-          ) : null}
-        </div>
-
-        <PatternImportPreview
-          cells={cells}
-          palette={palette}
-          brand={brand}
-          unresolvedCount={unresolvedCount}
-          onOpenCorrection={() => setShowCorrectionDialog(true)}
-          onEnterBeadMode={handleEnterBeadMode}
-        />
-      </div>
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                未识别
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {unresolvedCount}
+              </p>
+            </Card>
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                品牌
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">{brand}</p>
+            </Card>
+          </div>
+        )}
+      </BeadWorkflowShell>
 
       <PatternCorrectionDialog
         open={showCorrectionDialog}
@@ -523,6 +579,6 @@ export default function PatternImportPage() {
         onApplyCode={handleApplyCode}
         onMarkEmpty={handleMarkEmpty}
       />
-    </div>
+    </>
   );
 }

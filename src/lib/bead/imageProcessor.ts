@@ -3,7 +3,7 @@
  * 负责图片缩放、像素化和颜色量化。
  */
 
-import { findClosestColor, hexToRgb, type PaletteColor } from "./palette";
+import { findClosestColor, type PaletteColor } from "./palette";
 import type { BeadGrid } from "./types";
 
 export interface ImageProcessingResult {
@@ -13,7 +13,7 @@ export interface ImageProcessingResult {
   palette: PaletteColor[];
 }
 
-export type PixelAlgorithm = "standard" | "edge-enhanced" | "dithered";
+export type PixelAlgorithm = "standard" | "edge-enhanced" | "clustered";
 
 export interface CanvasSettings {
   width: number;
@@ -58,6 +58,27 @@ function createWorkingCanvas(width: number, height: number): {
   canvas.height = height;
 
   return { canvas, context };
+}
+
+const PROCESSING_PIXELS_PER_CELL = 16;
+const DOMINANT_BUCKET_SIZE = 20;
+
+function calculateProcessingDimensions(
+  originalWidth: number,
+  originalHeight: number,
+  targetWidth: number,
+  targetHeight: number
+): { width: number; height: number } {
+  return {
+    width: Math.max(
+      targetWidth,
+      Math.min(originalWidth, targetWidth * PROCESSING_PIXELS_PER_CELL)
+    ),
+    height: Math.max(
+      targetHeight,
+      Math.min(originalHeight, targetHeight * PROCESSING_PIXELS_PER_CELL)
+    ),
+  };
 }
 
 function boxBlur(
@@ -226,74 +247,238 @@ function mapPixelsToGrid(
   return grid;
 }
 
-function mapPixelsWithDithering(
-  pixels: Uint8ClampedArray,
-  width: number,
-  height: number,
-  palette: PaletteColor[]
-): BeadGrid {
-  const working = new Float32Array(pixels.length);
-  const paletteRgb = palette.map((color) => hexToRgb(color.hex));
-  const grid: BeadGrid = Array.from({ length: height }, () =>
-    Array.from({ length: width }, () => null)
-  );
+function getCellBounds(
+  sourceWidth: number,
+  sourceHeight: number,
+  gridWidth: number,
+  gridHeight: number,
+  row: number,
+  col: number
+): { x: number; y: number; width: number; height: number } {
+  const startX = Math.floor((col * sourceWidth) / gridWidth);
+  const endX = Math.floor(((col + 1) * sourceWidth) / gridWidth);
+  const startY = Math.floor((row * sourceHeight) / gridHeight);
+  const endY = Math.floor(((row + 1) * sourceHeight) / gridHeight);
 
-  for (let index = 0; index < pixels.length; index += 1) {
-    working[index] = pixels[index];
-  }
-
-  const distributeError = (
-    targetX: number,
-    targetY: number,
-    errorR: number,
-    errorG: number,
-    errorB: number,
-    weight: number
-  ) => {
-    if (targetX < 0 || targetX >= width || targetY < 0 || targetY >= height) {
-      return;
-    }
-
-    const targetIndex = (targetY * width + targetX) * 4;
-
-    if (working[targetIndex + 3] === 0) {
-      return;
-    }
-
-    working[targetIndex] += errorR * weight;
-    working[targetIndex + 1] += errorG * weight;
-    working[targetIndex + 2] += errorB * weight;
+  return {
+    x: startX,
+    y: startY,
+    width: Math.max(1, endX - startX),
+    height: Math.max(1, endY - startY),
   };
+}
 
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const index = (y * width + x) * 4;
+function estimateDominantCellColor(
+  pixels: Uint8ClampedArray,
+  imageWidth: number,
+  imageHeight: number,
+  rect: { x: number; y: number; width: number; height: number }
+): {
+  r: number;
+  g: number;
+  b: number;
+  alphaRatio: number;
+} {
+  const inset = Math.max(0, Math.round(Math.min(rect.width, rect.height) * 0.05));
+  const sampleX = Math.max(0, rect.x + inset);
+  const sampleY = Math.max(0, rect.y + inset);
+  const sampleWidth = Math.max(1, Math.min(imageWidth - sampleX, rect.width - inset * 2));
+  const sampleHeight = Math.max(
+    1,
+    Math.min(imageHeight - sampleY, rect.height - inset * 2)
+  );
+  const buckets = new Map<
+    string,
+    { weight: number; sumR: number; sumG: number; sumB: number }
+  >();
+  const borderBuckets = new Map<
+    string,
+    { weight: number; sumR: number; sumG: number; sumB: number }
+  >();
+  const samples: Array<{ r: number; g: number; b: number; weight: number }> = [];
+  const totalSamples = sampleWidth * sampleHeight;
+  let totalWeight = 0;
+  let opaqueSamples = 0;
 
-      if (working[index + 3] === 0) {
-        grid[y][x] = null;
+  for (let y = 0; y < sampleHeight; y += 1) {
+    for (let x = 0; x < sampleWidth; x += 1) {
+      const sourceX = sampleX + x;
+      const sourceY = sampleY + y;
+      const index = (sourceY * imageWidth + sourceX) * 4;
+      const alpha = pixels[index + 3];
+
+      if (alpha < 24) {
         continue;
       }
 
-      const current = {
-        r: clampChannel(working[index]),
-        g: clampChannel(working[index + 1]),
-        b: clampChannel(working[index + 2]),
+      opaqueSamples += 1;
+
+      const r = pixels[index];
+      const g = pixels[index + 1];
+      const b = pixels[index + 2];
+      const normalizedX =
+        sampleWidth > 1 ? Math.abs((x + 0.5) / sampleWidth - 0.5) * 2 : 0;
+      const normalizedY =
+        sampleHeight > 1 ? Math.abs((y + 0.5) / sampleHeight - 0.5) * 2 : 0;
+      const edgeBias = Math.max(normalizedX, normalizedY);
+      const weight = 0.92 + edgeBias * 0.36;
+      const key = `${Math.round(r / DOMINANT_BUCKET_SIZE)}-${Math.round(
+        g / DOMINANT_BUCKET_SIZE
+      )}-${Math.round(b / DOMINANT_BUCKET_SIZE)}`;
+      const bucket = buckets.get(key) ?? {
+        weight: 0,
+        sumR: 0,
+        sumG: 0,
+        sumB: 0,
       };
 
-      const colorIndex = findClosestColor(current, palette);
-      const matched = paletteRgb[colorIndex];
+      bucket.weight += weight;
+      bucket.sumR += r * weight;
+      bucket.sumG += g * weight;
+      bucket.sumB += b * weight;
+      buckets.set(key, bucket);
 
-      grid[y][x] = colorIndex;
+      if (edgeBias >= 0.58) {
+        const borderBucket = borderBuckets.get(key) ?? {
+          weight: 0,
+          sumR: 0,
+          sumG: 0,
+          sumB: 0,
+        };
 
-      const errorR = current.r - matched.r;
-      const errorG = current.g - matched.g;
-      const errorB = current.b - matched.b;
+        borderBucket.weight += weight;
+        borderBucket.sumR += r * weight;
+        borderBucket.sumG += g * weight;
+        borderBucket.sumB += b * weight;
+        borderBuckets.set(key, borderBucket);
+      }
 
-      distributeError(x + 1, y, errorR, errorG, errorB, 7 / 16);
-      distributeError(x - 1, y + 1, errorR, errorG, errorB, 3 / 16);
-      distributeError(x, y + 1, errorR, errorG, errorB, 5 / 16);
-      distributeError(x + 1, y + 1, errorR, errorG, errorB, 1 / 16);
+      samples.push({ r, g, b, weight });
+      totalWeight += weight;
     }
+  }
+
+  if (samples.length === 0 || totalWeight <= 0) {
+    return {
+      r: 255,
+      g: 255,
+      b: 255,
+      alphaRatio: 0,
+    };
+  }
+
+  const dominantSource = borderBuckets.size > 0 ? borderBuckets : buckets;
+  const dominantBucket = Array.from(dominantSource.values()).reduce<{
+    weight: number;
+    sumR: number;
+    sumG: number;
+    sumB: number;
+  } | null>((best, bucket) => {
+    if (!best || bucket.weight > best.weight) {
+      return bucket;
+    }
+
+    return best;
+  }, null);
+
+  const initialColor = dominantBucket
+    ? {
+        r: dominantBucket.sumR / dominantBucket.weight,
+        g: dominantBucket.sumG / dominantBucket.weight,
+        b: dominantBucket.sumB / dominantBucket.weight,
+      }
+    : { r: 255, g: 255, b: 255 };
+  const refineThreshold = Math.max(
+    18,
+    Math.min(42, Math.round(Math.min(sampleWidth, sampleHeight) * 0.9))
+  );
+  let refinedWeight = 0;
+  let refinedR = 0;
+  let refinedG = 0;
+  let refinedB = 0;
+
+  samples.forEach((sample) => {
+    const dr = sample.r - initialColor.r;
+    const dg = sample.g - initialColor.g;
+    const db = sample.b - initialColor.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+
+    if (distance > refineThreshold) {
+      return;
+    }
+
+    refinedWeight += sample.weight;
+    refinedR += sample.r * sample.weight;
+    refinedG += sample.g * sample.weight;
+    refinedB += sample.b * sample.weight;
+  });
+
+  const finalColor =
+    refinedWeight > totalWeight * 0.16
+      ? {
+          r: Math.round(refinedR / refinedWeight),
+          g: Math.round(refinedG / refinedWeight),
+          b: Math.round(refinedB / refinedWeight),
+        }
+      : {
+          r: Math.round(initialColor.r),
+          g: Math.round(initialColor.g),
+          b: Math.round(initialColor.b),
+        };
+
+  return {
+    ...finalColor,
+    alphaRatio: opaqueSamples / Math.max(1, totalSamples),
+  };
+}
+
+export function mapPixelsToClusteredGrid(
+  pixels: Uint8ClampedArray,
+  sourceWidth: number,
+  sourceHeight: number,
+  gridWidth: number,
+  gridHeight: number,
+  palette: PaletteColor[]
+): BeadGrid {
+  const grid: BeadGrid = [];
+
+  for (let row = 0; row < gridHeight; row += 1) {
+    const gridRow: Array<number | null> = [];
+
+    for (let col = 0; col < gridWidth; col += 1) {
+      const rect = getCellBounds(
+        sourceWidth,
+        sourceHeight,
+        gridWidth,
+        gridHeight,
+        row,
+        col
+      );
+      const dominant = estimateDominantCellColor(
+        pixels,
+        sourceWidth,
+        sourceHeight,
+        rect
+      );
+
+      if (dominant.alphaRatio < 0.08) {
+        gridRow.push(null);
+        continue;
+      }
+
+      gridRow.push(
+        findClosestColor(
+          {
+            r: clampChannel(dominant.r),
+            g: clampChannel(dominant.g),
+            b: clampChannel(dominant.b),
+          },
+          palette
+        )
+      );
+    }
+
+    grid.push(gridRow);
   }
 
   return grid;
@@ -365,31 +550,58 @@ export async function processImage(
   palette: PaletteColor[]
 ): Promise<ImageProcessingResult> {
   const image = await loadImage(imageSource);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
   const { width, height } = calculateDimensions(
-    image.width,
-    image.height,
+    sourceWidth,
+    sourceHeight,
     settings
   );
-  const { canvas, context } = createWorkingCanvas(width, height);
-
-  context.clearRect(0, 0, width, height);
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
-  context.drawImage(image, 0, 0, width, height);
-
-  const sourceImageData = context.getImageData(0, 0, width, height);
   const algorithm = settings.algorithm ?? "standard";
 
   let grid: BeadGrid;
 
-  if (algorithm === "dithered") {
-    grid = mapPixelsWithDithering(
+  if (algorithm === "clustered") {
+    const processingSize = calculateProcessingDimensions(
+      sourceWidth,
+      sourceHeight,
+      width,
+      height
+    );
+    const { context } = createWorkingCanvas(
+      processingSize.width,
+      processingSize.height
+    );
+
+    context.clearRect(0, 0, processingSize.width, processingSize.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, processingSize.width, processingSize.height);
+
+    const sourceImageData = context.getImageData(
+      0,
+      0,
+      processingSize.width,
+      processingSize.height
+    );
+
+    grid = mapPixelsToClusteredGrid(
       sourceImageData.data,
+      sourceImageData.width,
+      sourceImageData.height,
       width,
       height,
       palette
     );
   } else {
+    const { context } = createWorkingCanvas(width, height);
+
+    context.clearRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, width, height);
+
+    const sourceImageData = context.getImageData(0, 0, width, height);
     const workingImageData =
       algorithm === "edge-enhanced"
         ? applyEdgeEnhanced(sourceImageData)
