@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
@@ -159,10 +159,12 @@ function ProgressBar({
   progress,
   animated = false,
   tone = "rose",
+  className = "",
 }: {
   progress: number;
   animated?: boolean;
   tone?: "rose" | "emerald" | "red" | "amber";
+  className?: string;
 }) {
   const toneClass =
     tone === "emerald"
@@ -174,7 +176,7 @@ function ProgressBar({
       : "bg-rose-500";
 
   return (
-    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+    <div className={`overflow-hidden rounded-full bg-slate-100 ${className}`}>
       <div
         className={`h-full rounded-full transition-all duration-500 ${toneClass} ${
           animated ? "animate-pulse" : ""
@@ -246,35 +248,86 @@ export default function AIGeneratePage() {
   const isTaskRunning =
     aiSubmitting ||
     Boolean(currentTaskItem && isAIGenerationActive(currentTaskItem.status));
+  const hasWorkingSelectionRef = useRef(false);
+  const selectedHistoryIdRef = useRef<string | null>(null);
+  const canvasWidthRef = useRef(canvasWidth);
+  const maintainAspectRatioRef = useRef(maintainAspectRatio);
+  const imageMetadataRef = useRef<ImageMetadata | null>(imageMetadata);
+  const historyRequestIdRef = useRef(0);
+  const restoreRequestIdRef = useRef(0);
+  const pollInFlightRef = useRef(false);
+  const pollFailureCountRef = useRef(0);
+
+  useEffect(() => {
+    hasWorkingSelectionRef.current = Boolean(
+      sourcePreviewUrl || imageFile || selectedHistoryId || grid || palette
+    );
+  }, [grid, imageFile, palette, selectedHistoryId, sourcePreviewUrl]);
+
+  useEffect(() => {
+    selectedHistoryIdRef.current = selectedHistoryId;
+  }, [selectedHistoryId]);
+
+  useEffect(() => {
+    canvasWidthRef.current = canvasWidth;
+  }, [canvasWidth]);
+
+  useEffect(() => {
+    maintainAspectRatioRef.current = maintainAspectRatio;
+  }, [maintainAspectRatio]);
+
+  useEffect(() => {
+    imageMetadataRef.current = imageMetadata;
+  }, [imageMetadata]);
 
   const resetPatternState = useCallback(() => {
     setGrid(null);
     setPalette(null);
   }, []);
 
+  const resetImportFlow = useCallback(() => {
+    setSourcePreviewUrl(null);
+    setSourcePreviewLabel(null);
+    setImageFile(null);
+    setImageMetadata(null);
+    setSelectedHistoryId(null);
+    setOptimisticItem(null);
+    setActiveHistoryId(null);
+    setSelectedStyle("anime");
+    setCustomPrompt("");
+    setHistoryOpen(false);
+    setError(null);
+    resetPatternState();
+    setCurrentStep(0);
+  }, [resetPatternState]);
+
   const syncAspectRatioSize = useCallback(
-    (nextWidth: number, metadata: ImageMetadata | null = imageMetadata) => {
-      if (!metadata) {
+    (nextWidth: number, metadata?: ImageMetadata | null) => {
+      const effectiveMetadata = metadata ?? imageMetadataRef.current;
+
+      if (!effectiveMetadata) {
         setCanvasWidth(clampSize(nextWidth));
         return;
       }
 
       const dimensions = calculateAspectRatioDimensionsFromWidth(
-        metadata.width,
-        metadata.height,
+        effectiveMetadata.width,
+        effectiveMetadata.height,
         nextWidth
       );
 
       setCanvasWidth(dimensions.width);
       setCanvasHeight(dimensions.height);
     },
-    [imageMetadata]
+    []
   );
 
   const restoreHistorySelection = useCallback(
     async (item: AIGenerationHistoryItem, label: string) => {
+      const requestId = ++restoreRequestIdRef.current;
+
       setSelectedHistoryId(item.id);
-      setSourcePreviewUrl(item.sourceImageUrl);
+      setSourcePreviewUrl(item.sourceImageProxyUrl || item.sourceImageUrl);
       setSourcePreviewLabel(label);
       setSelectedStyle(item.styleId || "anime");
       setCustomPrompt(item.prompt);
@@ -282,16 +335,20 @@ export default function AIGeneratePage() {
       resetPatternState();
 
       const preferredMetadata = await loadImageMetadata(
-        item.aiImageUrl || item.sourceImageUrl
+        item.aiImageProxyUrl || item.aiImageUrl || item.sourceImageProxyUrl
       );
+
+      if (restoreRequestIdRef.current !== requestId) {
+        return;
+      }
 
       setImageMetadata(preferredMetadata);
 
-      if (maintainAspectRatio && preferredMetadata) {
-        syncAspectRatioSize(canvasWidth, preferredMetadata);
+      if (maintainAspectRatioRef.current && preferredMetadata) {
+        syncAspectRatioSize(canvasWidthRef.current, preferredMetadata);
       }
     },
-    [canvasWidth, maintainAspectRatio, resetPatternState, syncAspectRatioSize]
+    [resetPatternState, syncAspectRatioSize]
   );
 
   const applyLoadedHistory = useCallback(
@@ -307,19 +364,17 @@ export default function AIGeneratePage() {
         return;
       }
 
-      setSelectedHistoryId(null);
-      setSourcePreviewUrl(null);
-      setSourcePreviewLabel(null);
-      setImageFile(null);
-      setImageMetadata(null);
-      resetPatternState();
-      setCurrentStep(0);
+      if (hasWorkingSelectionRef.current) {
+        return;
+      }
     },
-    [resetPatternState, restoreHistorySelection]
+    [restoreHistorySelection]
   );
 
   const loadHistory = useCallback(
     async (etag?: string | null) => {
+      const requestId = ++historyRequestIdRef.current;
+
       if (!etag) {
         setHistoryLoading(true);
       }
@@ -342,6 +397,10 @@ export default function AIGeneratePage() {
         const items = (payload.data as AIGenerationHistoryItem[]) || [];
         const nextEtag = response.headers.get("etag");
 
+        if (historyRequestIdRef.current !== requestId) {
+          return;
+        }
+
         setHistoryEtag(nextEtag);
         writeHistoryCache({
           etag: nextEtag,
@@ -350,13 +409,17 @@ export default function AIGeneratePage() {
 
         await applyLoadedHistory(items);
       } catch (loadError) {
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "加载 AI 历史记录失败。"
-        );
+        if (historyRequestIdRef.current === requestId) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "加载 AI 历史记录失败。"
+          );
+        }
       } finally {
-        setHistoryLoading(false);
+        if (historyRequestIdRef.current === requestId) {
+          setHistoryLoading(false);
+        }
       }
     },
     [applyLoadedHistory]
@@ -397,6 +460,12 @@ export default function AIGeneratePage() {
     let cancelled = false;
 
     const poll = async () => {
+      if (pollInFlightRef.current) {
+        return;
+      }
+
+      pollInFlightRef.current = true;
+
       try {
         const response = await fetch(`/api/ai-generate/history/${activeHistoryId}`, {
           cache: "no-store",
@@ -408,12 +477,14 @@ export default function AIGeneratePage() {
           return;
         }
 
+        pollFailureCountRef.current = 0;
+        setError(null);
         setOptimisticItem(null);
         setHistoryItems((items) => mergeHistoryItems(items, item));
 
         if (
-          selectedHistoryId === activeHistoryId ||
-          selectedHistoryId === null ||
+          selectedHistoryIdRef.current === activeHistoryId ||
+          selectedHistoryIdRef.current === null ||
           item.status !== "SUCCEEDED"
         ) {
           await restoreHistorySelection(
@@ -435,13 +506,27 @@ export default function AIGeneratePage() {
         }
       } catch (pollError) {
         if (!cancelled) {
-          setActiveHistoryId(null);
-          setError(
+          pollFailureCountRef.current += 1;
+          const message =
             pollError instanceof Error
               ? pollError.message
-              : "刷新 AI 生成状态失败。"
+              : "刷新 AI 生成状态失败。";
+
+          if (
+            message.includes("Authentication required") ||
+            message.includes("Generation record not found")
+          ) {
+            setActiveHistoryId(null);
+          }
+
+          setError(
+            message === "Failed to fetch"
+              ? "网络波动，正在重试获取 AI 结果。"
+              : message
           );
         }
+      } finally {
+        pollInFlightRef.current = false;
       }
     };
 
@@ -458,8 +543,9 @@ export default function AIGeneratePage() {
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      pollInFlightRef.current = false;
     };
-  }, [activeHistoryId, restoreHistorySelection, selectedHistoryId]);
+  }, [activeHistoryId, restoreHistorySelection]);
 
   const handleAIGenerate = useCallback(async () => {
     if (!imageFile || !sourcePreviewUrl) {
@@ -533,7 +619,7 @@ export default function AIGeneratePage() {
       }
 
       if (!item) {
-        throw new Error("AI 生成接口没有返回任务记录。");
+        throw new Error("AI 接口没有返回任务记录。");
       }
 
       setHistoryItems((items) => mergeHistoryItems(items, item));
@@ -545,7 +631,7 @@ export default function AIGeneratePage() {
       setError(
         generationError instanceof Error
           ? generationError.message
-          : "AI 生成失败，请稍后再试。"
+           : "AI 生成失败，请稍后再试。"
       );
     } finally {
       setAiSubmitting(false);
@@ -592,7 +678,7 @@ export default function AIGeneratePage() {
       setError(
         generationError instanceof Error
           ? generationError.message
-          : "生成最终图纸时出错，请稍后再试。"
+           : "生成最终图纸时出错，请稍后再试。"
       );
     } finally {
       setPatternLoading(false);
@@ -643,28 +729,28 @@ export default function AIGeneratePage() {
       {
         id: "upload",
         label: "上传原图",
-        caption: "先放进一张适合转成像素风的参考图。",
+        caption: "导入图片",
         available: true,
         complete: Boolean(sourcePreviewUrl),
       },
       {
         id: "style",
         label: "选择风格",
-        caption: "决定这次 AI 生成走哪种像素语气。",
+        caption: "设置提示词",
         available: Boolean(sourcePreviewUrl),
         complete: Boolean(sourcePreviewUrl && selectedStyle),
       },
       {
         id: "generate",
-        label: "生成 AI 图",
-        caption: "跟踪进度，或从历史记录里挑一张已完成结果。",
+        label: "AI 结果",
+        caption: "查看进度与历史",
         available: Boolean(sourcePreviewUrl),
         complete: Boolean(selectedCompletedHistory),
       },
       {
         id: "pattern",
-        label: "制作图纸",
-        caption: "基于选中的 AI 图生成最终拼豆图纸。",
+        label: "最终图纸",
+        caption: "生成拼豆图纸",
         available: Boolean(selectedCompletedHistory),
         complete: Boolean(grid && palette),
       },
@@ -675,162 +761,137 @@ export default function AIGeneratePage() {
   const stageCopy = [
     {
       eyebrow: "Step 1 / 4",
-      title: "先确定这次改造的原图",
-      description:
-        "上传完成后，后面的流程都会围绕这张原图展开。手机端会把流程收成单步页面，避免所有控件一次性堆满屏幕。",
+      title: "上传原图",
     },
     {
       eyebrow: "Step 2 / 4",
-      title: "给 AI 一个明确的像素方向",
-      description:
-        "先选预设风格，再决定要不要补充自定义提示词。这里的选择会直接影响后续 AI 历史记录中的结果风格。",
+      title: "选择风格",
     },
     {
       eyebrow: "Step 3 / 4",
-      title: "等待 AI 出图，或切回历史结果",
-      description:
-        "当前任务会在这里显示实时进度。你也可以通过右下角悬浮历史球切换到已完成记录，再继续制作最终图纸。",
+      title: "AI 结果",
     },
     {
       eyebrow: "Step 4 / 4",
-      title: "把 AI 图压缩成可制作的拼豆图纸",
-      description:
-        "这一步决定最终图纸的尺寸、色数和算法。生成后可以继续进拼豆模式做逐格编辑。",
+      title: "最终图纸",
     },
   ][currentStep];
 
-  const sideNote = (
-    <Card className="border-white/70 bg-white/82">
-      <div className="space-y-3 text-sm leading-6 text-slate-600">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-          使用建议
-        </p>
-        <p>手机端更适合先生成 24 色左右的小尺寸版本，确认风格后再放大细调。</p>
-        <p>如果主体轮廓不够稳定，优先换一张背景更干净的原图，通常比反复补提示词更有效。</p>
-        <p>AI 历史只保留最近 10 条，完成后的结果可以随时通过右下角悬浮球重新打开。</p>
-      </div>
-    </Card>
-  );
+  const preview = (() => {
+    if (currentStep === 3 && grid && palette) {
+      return (
+        <PatternPreviewPanel
+          grid={grid}
+          palette={palette}
+          brand={brand}
+          showColorNumbers={showColorNumbers}
+          onShowColorNumbersChange={setShowColorNumbers}
+          fileNameBase="bead-ai-preview"
+          emptyState={<></>}
+          footer={
+            <Button
+              type="button"
+              size="lg"
+              className="w-full bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600"
+              onClick={handleEnterBeadMode}
+              disabled={!grid || !palette}
+            >
+              <Grid3X3 className="mr-2 h-4 w-4" />
+              进入拼豆模式
+            </Button>
+          }
+        />
+      );
+    }
 
-  const preview = grid && palette ? (
-    <PatternPreviewPanel
-      grid={grid}
-      palette={palette}
-      brand={brand}
-      showColorNumbers={showColorNumbers}
-      onShowColorNumbersChange={setShowColorNumbers}
-      fileNameBase="bead-ai-preview"
-      emptyState={<></>}
-      footer={
-        <Button
-          type="button"
-          size="lg"
-          className="w-full bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600"
-          onClick={handleEnterBeadMode}
-          disabled={!grid || !palette}
-        >
-          <Grid3X3 className="mr-2 h-4 w-4" />
-          进入拼豆模式
-        </Button>
-      }
-    />
-  ) : selectedHistory?.aiImageUrl ? (
-    <BeadImagePreviewCard
-      badge="AI Result"
-      title="当前 AI 图片"
-      description="右侧始终显示当前选中的 AI 结果，确认满意后再继续制作最终图纸。"
-      imageUrl={selectedHistory.aiImageUrl}
-      alt="AI 生成结果"
-      fit="contain"
-      meta={[
-        `${selectedHistory.styleName} · ${selectedHistory.statusLabel}`,
-        `生成于 ${formatDateTime(selectedHistory.createdAt)}`,
-      ]}
-      emptyTitle="等待 AI 出图"
-      emptyDescription="任务完成后，这里会显示当前记录生成出来的像素风图片。"
-    />
-  ) : (
-    <BeadImagePreviewCard
-      badge={sourcePreviewUrl ? "Source Preview" : "Waiting"}
-      title={sourcePreviewUrl ? "原图预览" : "等待上传"}
-      description={
-        sourcePreviewUrl
-          ? "这张原图会贯穿整个 AI 流程。完成风格设定后，就可以开始异步生成。"
-          : "先上传一张原图，右侧就会出现实时预览与后续步骤摘要。"
-      }
-      imageUrl={sourcePreviewUrl}
-      alt="原图预览"
-      fit="contain"
-      meta={
-        imageMetadata
-          ? [
-              `原始尺寸 ${imageMetadata.width} × ${imageMetadata.height}`,
-              selectedHistory ? `当前记录 ${selectedHistory.styleName}` : "等待选择风格",
-            ]
-          : undefined
-      }
-      emptyTitle="还没有原图"
-      emptyDescription="上传后这里会展示原图预览，桌面端会保持固定在右侧，手机端则跟随步骤显示在下方。"
-    />
-  );
+    if (currentStep === 2 && selectedHistory?.aiImageProxyUrl) {
+      return (
+        <BeadImagePreviewCard
+          badge="AI Result"
+          title="当前 AI 图片"
+          description="已完成的 AI 结果。"
+          imageUrl={selectedHistory.aiImageProxyUrl}
+          alt="AI 生成结果"
+          fit="contain"
+          meta={[
+            `${selectedHistory.styleName} · ${selectedHistory.statusLabel}`,
+            formatDateTime(selectedHistory.createdAt),
+          ]}
+          emptyTitle="等待 AI 结果"
+          emptyDescription="任务完成后这里会显示 AI 图片。"
+        />
+      );
+    }
 
-  const footer =
-    currentStep === 0 ? (
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm leading-6 text-slate-500">
-          原图上传完成后进入下一步，开始选择这次要生成的像素风格。
-        </p>
-        <Button
-          type="button"
-          size="lg"
-          onClick={() => setCurrentStep(1)}
-          disabled={!sourcePreviewUrl}
-        >
-          继续选风格
-        </Button>
-      </div>
-    ) : currentStep === 1 ? (
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          onClick={() => setCurrentStep(0)}
-        >
-          返回上传
-        </Button>
-        <Button
-          type="button"
-          size="lg"
-          className="bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600"
-          onClick={handleAIGenerate}
-          disabled={isTaskRunning || !imageFile}
-        >
-          <Wand2 className="mr-2 h-4 w-4" />
-          {isTaskRunning ? "AI 正在处理中..." : "开始 AI 生成"}
-        </Button>
-      </div>
-    ) : currentStep === 2 ? (
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          onClick={() => setCurrentStep(1)}
-        >
-          返回风格
-        </Button>
-        {selectedCompletedHistory ? (
-          <Button type="button" size="lg" onClick={() => setCurrentStep(3)}>
-            继续制作图纸
+    return undefined;
+  })();
+
+  const footer = (() => {
+    if (currentStep === 0) {
+      return (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => setCurrentStep(1)}
+            disabled={!sourcePreviewUrl}
+          >
+            下一步
           </Button>
-        ) : (
-          <Button type="button" size="lg" disabled>
-            {isTaskRunning ? "等待 AI 完成" : "选择一条已完成记录"}
+        </div>
+      );
+    }
+
+    if (currentStep === 1) {
+      return (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            onClick={() => setCurrentStep(0)}
+          >
+            返回上传
           </Button>
-        )}
-      </div>
-    ) : (
+          <Button
+            type="button"
+            size="lg"
+            className="bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600"
+            onClick={handleAIGenerate}
+            disabled={isTaskRunning || !imageFile}
+          >
+            <Wand2 className="mr-2 h-4 w-4" />
+            {isTaskRunning ? "生成中..." : "AI 生成像素画"}
+          </Button>
+        </div>
+      );
+    }
+
+    if (currentStep === 2) {
+      return (
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            onClick={() => setCurrentStep(1)}
+          >
+            返回风格
+          </Button>
+          {selectedCompletedHistory ? (
+            <Button type="button" size="lg" onClick={() => setCurrentStep(3)}>
+              下一步
+            </Button>
+          ) : (
+            <Button type="button" size="lg" disabled>
+              {isTaskRunning ? "等待 AI 完成" : "选择已完成记录"}
+            </Button>
+          )}
+        </div>
+      );
+    }
+
+    return (
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <Button
           type="button"
@@ -847,13 +908,14 @@ export default function AIGeneratePage() {
           disabled={patternLoading || !selectedCompletedHistory}
         >
           {patternLoading
-            ? "正在生成最终图纸..."
+            ? "生成中..."
             : grid && palette
-            ? "重新生成最终图纸"
-            : "生成最终图纸"}
+            ? "重新生成图纸"
+            : "生成图纸"}
         </Button>
       </div>
     );
+  })();
 
   const historyPanel = (
     <>
@@ -876,7 +938,7 @@ export default function AIGeneratePage() {
                     AI History
                   </p>
                   <h3 className="text-base font-semibold text-slate-900">
-                    最近 10 条生成记录
+                    最近 10 条记录
                   </h3>
                 </div>
                 <Button
@@ -896,8 +958,7 @@ export default function AIGeneratePage() {
                   </div>
                 ) : displayedHistoryItems.length === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-cream-100 bg-cream-50/70 px-4 py-6 text-sm text-slate-500">
-                    还没有 AI 历史记录。先上传原图并开始生成，记录会实时出现在这里。
-                  </div>
+                    还没有 AI 历史记录。                  </div>
                 ) : (
                   displayedHistoryItems.map((item) => {
                     const clickable = item.status === "SUCCEEDED";
@@ -1010,8 +1071,6 @@ export default function AIGeneratePage() {
   return (
     <BeadWorkflowShell
       title="AI 生成像素画"
-      description="把原图先交给 AI 变成像素风，再基于 AI 图生成最终拼豆图纸。桌面端会把步骤、内容和预览并排展开，手机端则改成单步聚焦式流程。"
-      badge="AI Workflow"
       icon={Sparkles}
       accent="rose"
       steps={steps}
@@ -1024,235 +1083,115 @@ export default function AIGeneratePage() {
       onBack={() => router.push("/tools/bead")}
       stageEyebrow={stageCopy.eyebrow}
       stageTitle={stageCopy.title}
-      stageDescription={stageCopy.description}
       error={error}
       preview={preview}
-      sideNote={sideNote}
+      mobilePreviewPlacement={currentStep === 2 ? "before" : "after"}
       footer={footer}
       floatingSlot={historyPanel}
     >
       {currentStep === 0 ? (
-        <div className="space-y-4">
-          <ImageUploadStep
-            previewUrl={sourcePreviewUrl}
-            previewLabel={sourcePreviewLabel}
-            disabled={isTaskRunning}
-            onImageSelect={(url, file, metadata) => {
-              setSourcePreviewUrl(url);
-              setSourcePreviewLabel(file.name);
-              setImageFile(file);
-              setImageMetadata(metadata);
-              setSelectedHistoryId(null);
-              setOptimisticItem(null);
-              setCurrentStep(1);
-              resetPatternState();
-              setError(null);
+        <ImageUploadStep
+          previewUrl={sourcePreviewUrl}
+          previewLabel={sourcePreviewLabel}
+          disabled={isTaskRunning}
+          allowReplaceWhenPreviewed={false}
+          onImageSelect={(url, file, metadata) => {
+            setSourcePreviewUrl(url);
+            setSourcePreviewLabel(file.name);
+            setImageFile(file);
+            setImageMetadata(metadata);
+            setSelectedHistoryId(null);
+            setOptimisticItem(null);
+            setError(null);
+            resetPatternState();
+            setCurrentStep(1);
 
-              if (maintainAspectRatio) {
-                syncAspectRatioSize(canvasWidth, metadata);
-              }
-            }}
-            onClear={() => {
-              setSourcePreviewUrl(null);
-              setSourcePreviewLabel(null);
-              setImageFile(null);
-              setImageMetadata(null);
-              setSelectedHistoryId(null);
-              setOptimisticItem(null);
-              setCurrentStep(0);
-              resetPatternState();
-              setError(null);
-            }}
-            onError={setError}
-          />
-
-          <Card className="border-dashed border-cream-100 bg-cream-50/70">
-            <div className="space-y-2 text-sm leading-6 text-slate-600">
-              <p className="font-semibold text-slate-900">什么样的原图更适合 AI 像素化？</p>
-              <p>人物、宠物、玩具和插画通常更容易生成稳定的像素风效果，复杂背景则容易让主体边缘发散。</p>
-              <p>如果你主要在手机上操作，先用构图简单的图更容易得到干净结果。</p>
-            </div>
-          </Card>
-        </div>
+            if (maintainAspectRatio) {
+              syncAspectRatioSize(canvasWidth, metadata);
+            }
+          }}
+          onClear={resetImportFlow}
+          onError={setError}
+        />
       ) : currentStep === 1 ? (
-        <div className="space-y-4">
-          <StyleSelector
-            selectedStyle={selectedStyle}
-            onStyleSelect={setSelectedStyle}
-            customPrompt={customPrompt}
-            onCustomPromptChange={setCustomPrompt}
-            disabled={isTaskRunning}
-          />
-
-          <Card className="border-white/70 bg-cream-50/75">
-            <div className="space-y-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Current Direction
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-white px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    风格
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-slate-900">
-                    {getStyleName(selectedStyle)}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    提示词
-                  </p>
-                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
-                    {customPrompt.trim() ||
-                      PIXEL_STYLES.find((style) => style.id === selectedStyle)?.prompt ||
-                      "pixel art style"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
+        <StyleSelector
+          selectedStyle={selectedStyle}
+          onStyleSelect={setSelectedStyle}
+          customPrompt={customPrompt}
+          onCustomPromptChange={setCustomPrompt}
+          disabled={isTaskRunning}
+        />
       ) : currentStep === 2 ? (
         <div className="space-y-4">
-          <Card className="border-white/70 bg-white/84">
-            <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Generation Status
+          <Card className="border-rose-100 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(255,241,242,0.96),rgba(255,247,237,0.96))] shadow-[0_22px_60px_rgba(244,63,94,0.12)]">
+            <div className="space-y-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Generation Progress
                   </p>
-                  <h3 className="text-xl font-semibold text-slate-900">
-                    {currentTaskItem
-                      ? currentTaskItem.statusLabel
-                      : selectedCompletedHistory
-                      ? "已选择完成记录"
-                      : "等待开始生成"}
-                  </h3>
-                  <p className="text-sm leading-7 text-slate-600">
-                    {currentTaskItem
-                      ? "当前任务会自动轮询刷新。你也可以打开右下角悬浮球，切换到其它已完成历史记录。"
-                      : selectedCompletedHistory
-                      ? "这条记录已经生成完成，可以直接继续制作最终图纸。"
-                      : "从上一步发起 AI 生成后，这里会显示进度和当前结果。"}
+                  <div className="flex items-center gap-2 text-base font-semibold text-slate-900 sm:text-lg">
+                    {selectedHistory ? getHistoryItemIcon(selectedHistory) : null}
+                    <span>
+                      {currentTaskItem
+                        ? currentTaskItem.statusLabel
+                        : selectedCompletedHistory
+                        ? "已选择完成记录"
+                        : "等待开始生成"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {selectedHistory
+                      ? formatDateTime(selectedHistory.createdAt)
+                      : "从上一步发起生成后，这里会出现任务记录。"}
                   </p>
                 </div>
 
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setHistoryOpen(true)}
-                >
-                  <History className="mr-2 h-4 w-4" />
-                  打开历史
-                </Button>
+                <div className="rounded-[24px] border border-white/90 bg-white px-3 py-2 text-right shadow-[0_12px_28px_rgba(15,23,42,0.08)] sm:px-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Progress
+                  </p>
+                  <p className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+                    {selectedHistory?.progressPercent ?? 0}%
+                  </p>
+                </div>
               </div>
 
-              <div className="rounded-[28px] border border-cream-100 bg-cream-50/70 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      {selectedHistory ? getHistoryItemIcon(selectedHistory) : null}
-                      <span>
-                        {selectedHistory
-                          ? `${selectedHistory.styleName} · ${selectedHistory.statusLabel}`
-                          : "尚未选择记录"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      {selectedHistory
-                        ? formatDateTime(selectedHistory.createdAt)
-                        : "开始生成后会创建一条新的任务记录。"}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                    {selectedHistory?.progressPercent ?? 0}%
+              <div className="space-y-3">
+                <ProgressBar
+                  progress={selectedHistory?.progressPercent ?? 0}
+                  animated={selectedHistory?.status === "RUNNING"}
+                  tone={
+                    selectedHistory?.status === "FAILED"
+                      ? "red"
+                      : selectedHistory?.status === "SUCCEEDED"
+                      ? "emerald"
+                      : "rose"
+                  }
+                  className="h-3.5 bg-white shadow-inner shadow-slate-200/70"
+                />
+
+                <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-500">
+                  <span>
+                    {selectedHistory?.statusLabel || "等待 AI 任务开始"}
+                  </span>
+                  <span>
+                    {selectedHistory?.status === "SUCCEEDED"
+                      ? "已完成"
+                      : selectedHistory?.status === "FAILED"
+                      ? "失败"
+                      : "处理中"}
                   </span>
                 </div>
 
-                <div className="mt-3 space-y-2">
-                  <ProgressBar
-                    progress={selectedHistory?.progressPercent ?? 0}
-                    animated={selectedHistory?.status === "RUNNING"}
-                    tone={
-                      selectedHistory?.status === "FAILED"
-                        ? "red"
-                        : selectedHistory?.status === "SUCCEEDED"
-                        ? "emerald"
-                        : "rose"
-                    }
-                  />
-                  <p className="text-xs leading-6 text-slate-500">
-                    {selectedHistory?.prompt ||
-                      "选中记录后，这里会显示它对应的提示词和当前进度。"}
+                {selectedHistory?.errorMessage ? (
+                  <p className="text-xs leading-6 text-red-500">
+                    {selectedHistory.errorMessage}
                   </p>
-                </div>
+                ) : null}
               </div>
             </div>
           </Card>
-
-          {selectedHistory ? (
-            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-              <Card className="border-white/70 bg-white/84">
-                <div className="space-y-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    当前记录
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-cream-50/75 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        风格
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">
-                        {selectedHistory.styleName}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl bg-cream-50/75 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        状态
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">
-                        {selectedHistory.statusLabel}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl bg-cream-50/75 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      提示词
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-slate-600 break-all">
-                      {selectedHistory.prompt}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="border-white/70 bg-cream-50/75">
-                <div className="space-y-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    下一步
-                  </p>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    {selectedCompletedHistory
-                      ? "可以继续做最终图纸"
-                      : "先等待这条记录完成"}
-                  </h3>
-                  <p className="text-sm leading-7 text-slate-600">
-                    {selectedCompletedHistory
-                      ? "这条 AI 图已经可用。点击下方按钮进入图纸设置步骤，控制最终尺寸与色数。"
-                      : "生成中的记录不可点击，但会在这里同步更新进度。任务完成后就能进入下一步。"}
-                  </p>
-                </div>
-              </Card>
-            </div>
-          ) : (
-            <Card className="border-dashed border-cream-100 bg-cream-50/70">
-              <div className="space-y-2 text-sm leading-6 text-slate-600">
-                <p className="font-semibold text-slate-900">还没有当前记录</p>
-                <p>你可以从上一步开始新的 AI 生成，或者打开右下角的悬浮历史球，从已完成记录中挑一条继续制作。</p>
-              </div>
-            </Card>
-          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -1286,59 +1225,35 @@ export default function AIGeneratePage() {
             onAlgorithmChange={setAlgorithm}
           />
 
-          <Card className="border-white/70 bg-cream-50/75">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-white px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  当前尺寸
-                </p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">
-                  {canvasWidth} × {canvasHeight}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-white px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  色数 / 品牌
-                </p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">
-                  {colorCount} 色 · {brand}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-white px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  当前来源
-                </p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">
-                  {selectedCompletedHistory?.styleName || "等待 AI 结果"}
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          {grid && palette ? (
-            <Card className="border-white/70 bg-white/84">
-              <div className="space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Ready To Make
-                </p>
-                <h3 className="text-xl font-semibold text-slate-900">
-                  最终图纸已经生成完成
-                </h3>
-                <p className="text-sm leading-7 text-slate-600">
-                  如果还想继续微调尺寸或色数，可以直接改完再重新生成；如果已经满意，就从右侧预览卡片进入拼豆模式。
-                </p>
-              </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                当前尺寸
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {canvasWidth} × {canvasHeight}
+              </p>
             </Card>
-          ) : (
-            <Card className="border-dashed border-cream-100 bg-cream-50/70">
-              <div className="space-y-2 text-sm leading-6 text-slate-600">
-                <p className="font-semibold text-slate-900">下一步会生成最终图纸</p>
-                <p>当前只会使用你选中的 AI 图片作为图纸来源，不会回退到原图。</p>
-              </div>
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                色数 / 品牌
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {colorCount} 色 · {brand}
+              </p>
             </Card>
-          )}
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                AI 来源
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {selectedCompletedHistory?.styleName || "等待 AI 结果"}
+              </p>
+            </Card>
+          </div>
         </div>
       )}
     </BeadWorkflowShell>
   );
 }
+

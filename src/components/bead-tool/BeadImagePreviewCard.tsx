@@ -27,17 +27,18 @@ export function BeadImagePreviewCard({
   fit = "cover",
   actions,
   emptyTitle = "等待内容",
-  emptyDescription = "完成当前步骤后，这里会显示对应的图像预览。",
+  emptyDescription = "完成当前步骤后，这里会显示对应的图片预览。",
 }: BeadImagePreviewCardProps) {
   return (
-    <Card className="border-white/70 bg-white/82 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-      <div className="space-y-4">
-        <div className="space-y-2">
+    <Card className="border-white/70 bg-white/84 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.06)] sm:p-4 xl:p-5">
+      <div className="space-y-3">
+        <div className="space-y-1.5">
           {badge ? (
             <span className="inline-flex rounded-full border border-cream-100 bg-cream-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
               {badge}
             </span>
           ) : null}
+
           <div>
             <h3 className="text-base font-semibold text-slate-900">{title}</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
@@ -45,27 +46,25 @@ export function BeadImagePreviewCard({
         </div>
 
         {imageUrl ? (
-          <div className="overflow-hidden rounded-[28px] border border-cream-100 bg-cream-50/70 p-3">
-            <div className="overflow-hidden rounded-[22px] bg-white">
+          <div className="overflow-hidden rounded-[24px] border border-cream-100 bg-cream-50/70 p-2.5">
+            <div className="overflow-hidden rounded-[18px] bg-white">
               <img
                 src={imageUrl}
                 alt={alt}
                 className={
                   fit === "contain"
-                    ? "h-auto max-h-[420px] w-full object-contain"
-                    : "h-[260px] w-full object-cover"
+                    ? "h-auto max-h-[380px] w-full object-contain"
+                    : "h-[220px] w-full object-cover sm:h-[240px]"
                 }
               />
             </div>
           </div>
         ) : (
-          <div className="flex min-h-[280px] flex-col items-center justify-center rounded-[28px] border border-dashed border-cream-100 bg-cream-50/60 px-5 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-cream-100 text-accent-brown">
-              <ImageIcon className="h-6 w-6" />
+          <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[24px] border border-dashed border-cream-100 bg-cream-50/60 px-4 text-center sm:min-h-[250px]">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-cream-100 text-accent-brown">
+              <ImageIcon className="h-5 w-5" />
             </span>
-            <p className="mt-4 text-sm font-semibold text-slate-800">
-              {emptyTitle}
-            </p>
+            <p className="mt-3 text-sm font-semibold text-slate-800">{emptyTitle}</p>
             <p className="mt-2 max-w-xs text-xs leading-6 text-slate-500">
               {emptyDescription}
             </p>
@@ -73,7 +72,7 @@ export function BeadImagePreviewCard({
         )}
 
         {meta?.length ? (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-1.5 sm:grid-cols-2">
             {meta.map((item) => (
               <div
                 key={item}

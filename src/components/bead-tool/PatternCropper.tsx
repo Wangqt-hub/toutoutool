@@ -15,10 +15,20 @@ interface DisplayCropRect {
 
 type DragHandle = "move" | "nw" | "ne" | "sw" | "se";
 
+interface MagnifierState {
+  handle: DragHandle;
+  focusX: number;
+  focusY: number;
+  crop: DisplayCropRect;
+}
+
 interface PatternCropperProps {
   imageUrl: string;
   onConfirm: (crop: CropRect) => void;
 }
+
+const MAGNIFIER_SIZE = 132;
+const MAGNIFIER_ZOOM = 3;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -36,6 +46,55 @@ function createDefaultCrop(width: number, height: number): DisplayCropRect {
   };
 }
 
+function getMagnifierFocusPoint(
+  crop: DisplayCropRect,
+  handle: DragHandle
+): { x: number; y: number } {
+  if (handle === "nw") {
+    return { x: crop.x, y: crop.y };
+  }
+
+  if (handle === "ne") {
+    return { x: crop.x + crop.width, y: crop.y };
+  }
+
+  if (handle === "sw") {
+    return { x: crop.x, y: crop.y + crop.height };
+  }
+
+  if (handle === "se") {
+    return { x: crop.x + crop.width, y: crop.y + crop.height };
+  }
+
+  return {
+    x: crop.x + crop.width / 2,
+    y: crop.y + crop.height / 2,
+  };
+}
+
+function shouldShowMagnifierEdge(
+  handle: DragHandle,
+  edge: "left" | "right" | "top" | "bottom"
+): boolean {
+  if (handle === "move") {
+    return true;
+  }
+
+  if (handle === "nw") {
+    return edge === "left" || edge === "top";
+  }
+
+  if (handle === "ne") {
+    return edge === "right" || edge === "top";
+  }
+
+  if (handle === "sw") {
+    return edge === "left" || edge === "bottom";
+  }
+
+  return edge === "right" || edge === "bottom";
+}
+
 export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const dragState = useRef<{
@@ -49,15 +108,28 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [crop, setCrop] = useState<DisplayCropRect | null>(null);
+  const [magnifier, setMagnifier] = useState<MagnifierState | null>(null);
+
+  const updateMagnifier = (nextCrop: DisplayCropRect, handle: DragHandle) => {
+    const focus = getMagnifierFocusPoint(nextCrop, handle);
+
+    setMagnifier({
+      handle,
+      focusX: focus.x,
+      focusY: focus.y,
+      crop: nextCrop,
+    });
+  };
 
   useEffect(() => {
     setCrop(null);
+    setMagnifier(null);
     dragState.current = null;
   }, [imageUrl]);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
-      if (!dragState.current || !crop) {
+      if (!dragState.current) {
         return;
       }
 
@@ -151,6 +223,7 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       }
 
       setCrop(nextCrop);
+      updateMagnifier(nextCrop, handle);
     };
 
     const stopDrag = (event?: PointerEvent) => {
@@ -163,6 +236,7 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       }
 
       dragState.current = null;
+      setMagnifier(null);
     };
 
     window.addEventListener("pointermove", handlePointerMove, {
@@ -176,7 +250,7 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       window.removeEventListener("pointerup", stopDrag);
       window.removeEventListener("pointercancel", stopDrag);
     };
-  }, [crop, displaySize.height, displaySize.width]);
+  }, [displaySize.height, displaySize.width]);
 
   const setDefaultCrop = () => {
     if (displaySize.width === 0 || displaySize.height === 0) {
@@ -218,7 +292,60 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       startY: event.clientY,
       initialCrop: crop,
     };
+    updateMagnifier(crop, handle);
   };
+
+  const handleLabel =
+    magnifier?.handle === "move"
+      ? "移动裁切框"
+      : magnifier?.handle === "nw"
+      ? "调整左上角"
+      : magnifier?.handle === "ne"
+      ? "调整右上角"
+      : magnifier?.handle === "sw"
+      ? "调整左下角"
+      : magnifier?.handle === "se"
+      ? "调整右下角"
+      : "";
+
+  const magnifierStyle =
+    magnifier && naturalSize.width > 0 && naturalSize.height > 0 && displaySize.width > 0 && displaySize.height > 0
+      ? {
+          backgroundImage: `url("${imageUrl}")`,
+          backgroundRepeat: "no-repeat",
+          backgroundSize: `${naturalSize.width * MAGNIFIER_ZOOM}px ${
+            naturalSize.height * MAGNIFIER_ZOOM
+          }px`,
+          backgroundPosition: `${
+            MAGNIFIER_SIZE / 2 -
+            (magnifier.focusX * (naturalSize.width / displaySize.width)) * MAGNIFIER_ZOOM
+          }px ${
+            MAGNIFIER_SIZE / 2 -
+            (magnifier.focusY * (naturalSize.height / displaySize.height)) * MAGNIFIER_ZOOM
+          }px`,
+        }
+      : undefined;
+
+  const magnifierEdgePositions =
+    magnifier && naturalSize.width > 0 && naturalSize.height > 0 && displaySize.width > 0 && displaySize.height > 0
+      ? (() => {
+          const scaleX =
+            (naturalSize.width / displaySize.width) * MAGNIFIER_ZOOM;
+          const scaleY =
+            (naturalSize.height / displaySize.height) * MAGNIFIER_ZOOM;
+
+          return {
+            left: MAGNIFIER_SIZE / 2 + (magnifier.crop.x - magnifier.focusX) * scaleX,
+            right:
+              MAGNIFIER_SIZE / 2 +
+              (magnifier.crop.x + magnifier.crop.width - magnifier.focusX) * scaleX,
+            top: MAGNIFIER_SIZE / 2 + (magnifier.crop.y - magnifier.focusY) * scaleY,
+            bottom:
+              MAGNIFIER_SIZE / 2 +
+              (magnifier.crop.y + magnifier.crop.height - magnifier.focusY) * scaleY,
+          };
+        })()
+      : null;
 
   const handleConfirm = () => {
     if (
@@ -258,7 +385,13 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
       <div className="rounded-3xl border border-cream-100 bg-cream-50/60 p-3">
         <div
           className="relative inline-block max-w-full select-none touch-none"
-          style={{ touchAction: "none" }}
+          style={{
+            touchAction: "none",
+            userSelect: "none",
+            WebkitUserSelect: "none",
+            WebkitTouchCallout: "none",
+          }}
+          onContextMenu={(event) => event.preventDefault()}
         >
           <img
             ref={imageRef}
@@ -266,8 +399,77 @@ export function PatternCropper({ imageUrl, onConfirm }: PatternCropperProps) {
             alt="图纸裁切预览"
             className="block max-w-full h-auto rounded-2xl border border-cream-100"
             onLoad={handleImageLoad}
+            onContextMenu={(event) => event.preventDefault()}
+            onDragStart={(event) => event.preventDefault()}
             draggable={false}
+            style={{
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              WebkitTouchCallout: "none",
+            }}
           />
+
+          {magnifier && magnifierStyle ? (
+            <div className="pointer-events-none absolute right-3 top-3 z-20 w-[148px] rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_16px_34px_rgba(15,23,42,0.18)] sm:w-[152px]">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  放大镜
+                </span>
+                <span className="truncate text-[10px] text-slate-500">
+                  {handleLabel}
+                </span>
+              </div>
+
+              <div
+                className="relative overflow-hidden rounded-[16px] border border-cream-100 bg-white"
+                style={{
+                  width: MAGNIFIER_SIZE,
+                  height: MAGNIFIER_SIZE,
+                  ...magnifierStyle,
+                }}
+              >
+                {magnifierEdgePositions &&
+                shouldShowMagnifierEdge(magnifier.handle, "left") ? (
+                  <div
+                    className="absolute inset-y-0 w-[2px] bg-emerald-500/95 shadow-[0_0_0_1px_rgba(255,255,255,0.86)]"
+                    style={{
+                      left: magnifierEdgePositions.left - 1,
+                    }}
+                  />
+                ) : null}
+                {magnifierEdgePositions &&
+                shouldShowMagnifierEdge(magnifier.handle, "right") ? (
+                  <div
+                    className="absolute inset-y-0 w-[2px] bg-emerald-500/95 shadow-[0_0_0_1px_rgba(255,255,255,0.86)]"
+                    style={{
+                      left: magnifierEdgePositions.right - 1,
+                    }}
+                  />
+                ) : null}
+                {magnifierEdgePositions &&
+                shouldShowMagnifierEdge(magnifier.handle, "top") ? (
+                  <div
+                    className="absolute inset-x-0 h-[2px] bg-emerald-500/95 shadow-[0_0_0_1px_rgba(255,255,255,0.86)]"
+                    style={{
+                      top: magnifierEdgePositions.top - 1,
+                    }}
+                  />
+                ) : null}
+                {magnifierEdgePositions &&
+                shouldShowMagnifierEdge(magnifier.handle, "bottom") ? (
+                  <div
+                    className="absolute inset-x-0 h-[2px] bg-emerald-500/95 shadow-[0_0_0_1px_rgba(255,255,255,0.86)]"
+                    style={{
+                      top: magnifierEdgePositions.bottom - 1,
+                    }}
+                  />
+                ) : null}
+                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/85 shadow-[0_0_0_1px_rgba(15,23,42,0.16)]" />
+                <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/85 shadow-[0_0_0_1px_rgba(15,23,42,0.16)]" />
+                <div className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-green-500/90 shadow-sm" />
+              </div>
+            </div>
+          ) : null}
 
           {crop ? (
             <>

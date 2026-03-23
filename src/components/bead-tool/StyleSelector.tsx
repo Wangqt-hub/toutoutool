@@ -30,7 +30,7 @@ export function StyleSelector({
           2. 选择像素风格
         </label>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-3 sm:gap-3 xl:grid-cols-4">
           {PIXEL_STYLES.map((style) => (
             <button
               key={style.id}
@@ -40,19 +40,19 @@ export function StyleSelector({
                 setUseCustom(false);
                 onStyleSelect?.(style.id);
               }}
-              className={`p-3 rounded-2xl border-2 transition-all text-left disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`rounded-2xl border-2 p-2.5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 sm:p-3 ${
                 selectedStyle === style.id && !useCustom
                   ? "border-purple-500 bg-purple-50 ring-2 ring-purple-200"
                   : "border-cream-100 bg-white/70 hover:border-purple-300"
               }`}
             >
-              <div className="flex items-center gap-2 mb-2">
-                <Wand2 className="w-4 h-4 text-purple-500" />
-                <span className="text-xs font-semibold text-slate-900">
+              <div className="mb-1.5 flex items-center gap-1.5 sm:mb-2 sm:gap-2">
+                <Wand2 className="h-3.5 w-3.5 text-purple-500 sm:h-4 sm:w-4" />
+                <span className="text-[11px] font-semibold text-slate-900 sm:text-xs">
                   {style.name}
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 line-clamp-2">
+              <p className="line-clamp-2 text-[10px] leading-4 text-slate-500 sm:leading-5">
                 {style.prompt.split(",")[0]}
               </p>
             </button>

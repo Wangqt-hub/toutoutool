@@ -121,26 +121,89 @@ function smoothSignal(signal: number[], radius: number): number[] {
   });
 }
 
-function estimateDominantSpacing(signal: number[]): number {
-  const minLag = Math.max(8, Math.floor(signal.length / 120));
-  const maxLag = Math.max(minLag + 1, Math.floor(signal.length / 4));
-  let bestLag = minLag;
-  let bestScore = Number.NEGATIVE_INFINITY;
+function getAutocorrelationScores(
+  signal: number[],
+  minLag: number,
+  maxLag: number
+): number[] {
+  const mean = signal.reduce((sum, value) => sum + value, 0) / Math.max(1, signal.length);
+  const centered = signal.map((value) => value - mean);
+  const scores = Array.from({ length: maxLag + 1 }, () => 0);
 
   for (let lag = minLag; lag <= maxLag; lag += 1) {
     let score = 0;
+    let samples = 0;
 
-    for (let index = 0; index + lag < signal.length; index += 1) {
-      score += signal[index] * signal[index + lag];
+    for (let index = 0; index + lag < centered.length; index += 1) {
+      score += centered[index] * centered[index + lag];
+      samples += 1;
     }
 
-    if (score > bestScore) {
-      bestScore = score;
-      bestLag = lag;
-    }
+    scores[lag] = samples > 0 ? score / samples : 0;
   }
 
-  return bestLag;
+  return scores;
+}
+
+function getSearchLagBounds(signalLength: number): { minLag: number; maxLag: number } {
+  const minLag = Math.max(8, Math.floor(signalLength / 180));
+  const maxLag = Math.max(minLag + 2, Math.floor(signalLength / 4));
+  return { minLag, maxLag };
+}
+
+function collectSpacingCandidates(signal: number[]): number[] {
+  const { minLag, maxLag } = getSearchLagBounds(signal.length);
+  const scores = getAutocorrelationScores(signal, minLag, maxLag);
+  const smoothedScores = smoothSignal(scores, 2);
+  const rankedCandidates = Array.from({ length: maxLag - minLag + 1 }, (_, index) => {
+    const lag = index + minLag;
+    return {
+      lag,
+      score: smoothedScores[lag] ?? scores[lag] ?? 0,
+    };
+  })
+    .filter((candidate) => {
+      const previous = smoothedScores[candidate.lag - 1] ?? Number.NEGATIVE_INFINITY;
+      const next = smoothedScores[candidate.lag + 1] ?? Number.NEGATIVE_INFINITY;
+      return candidate.score >= previous && candidate.score >= next;
+    })
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 12);
+
+  if (rankedCandidates.length === 0) {
+    return [minLag];
+  }
+
+  const searchLags = new Set<number>();
+  const enqueueLag = (candidateLag: number) => {
+    if (candidateLag < minLag || candidateLag > maxLag) {
+      return;
+    }
+
+    searchLags.add(candidateLag);
+  };
+
+  rankedCandidates.forEach(({ lag }) => {
+    for (let delta = -2; delta <= 2; delta += 1) {
+      enqueueLag(lag + delta);
+    }
+
+    for (const divisor of [2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+      const reduced = Math.round(lag / divisor);
+      for (let delta = -2; delta <= 2; delta += 1) {
+        enqueueLag(reduced + delta);
+      }
+    }
+
+    for (const multiple of [2, 3]) {
+      const expanded = lag * multiple;
+      for (let delta = -2; delta <= 2; delta += 1) {
+        enqueueLag(expanded + delta);
+      }
+    }
+  });
+
+  return Array.from(searchLags).sort((left, right) => left - right);
 }
 
 function getLocalPeak(
@@ -165,9 +228,74 @@ function getLocalPeak(
   return { index: bestIndex, value: bestValue };
 }
 
+function getLocalValley(
+  signal: number[],
+  center: number,
+  tolerance: number
+): { index: number; value: number } {
+  let bestIndex = clamp(Math.round(center), 0, signal.length - 1);
+  let bestValue = signal[bestIndex] ?? 0;
+
+  for (
+    let index = Math.max(0, Math.round(center - tolerance));
+    index <= Math.min(signal.length - 1, Math.round(center + tolerance));
+    index += 1
+  ) {
+    if ((signal[index] ?? 0) < bestValue) {
+      bestIndex = index;
+      bestValue = signal[index];
+    }
+  }
+
+  return { index: bestIndex, value: bestValue };
+}
+
+function getSignalWindowAverage(
+  signal: number[],
+  center: number,
+  radius: number
+): number {
+  let sum = 0;
+  let count = 0;
+
+  for (
+    let index = Math.max(0, Math.round(center - radius));
+    index <= Math.min(signal.length - 1, Math.round(center + radius));
+    index += 1
+  ) {
+    sum += signal[index];
+    count += 1;
+  }
+
+  return count > 0 ? sum / count : signal[clamp(Math.round(center), 0, signal.length - 1)];
+}
+
+function getInteriorPeakStrength(
+  signal: number[],
+  start: number,
+  end: number,
+  edgeInset: number
+): number {
+  let best = 0;
+
+  for (
+    let index = Math.max(0, Math.round(start + edgeInset));
+    index <= Math.min(signal.length - 1, Math.round(end - edgeInset));
+    index += 1
+  ) {
+    best = Math.max(best, signal[index] ?? 0);
+  }
+
+  return best;
+}
+
 function buildRegularLinePositions(signal: number[], step: number): number[] {
   const roundedStep = Math.max(6, Math.round(step));
   const tolerance = Math.max(2, Math.round(roundedStep * 0.22));
+  const average =
+    signal.reduce((sum, value) => sum + value, 0) / Math.max(signal.length, 1);
+  const max = Math.max(...signal, average);
+  const extensionMinStrength = average + (max - average) * 0.04;
   let bestOffset = 0;
   let bestScore = Number.NEGATIVE_INFINITY;
 
@@ -195,23 +323,231 @@ function buildRegularLinePositions(signal: number[], step: number): number[] {
     }
   }
 
+  while (positions.length > 0) {
+    const next = positions[0] - roundedStep;
+
+    if (next < -tolerance) {
+      break;
+    }
+
+    const peak = getLocalPeak(signal, next, tolerance);
+
+    if (peak.value < extensionMinStrength) {
+      break;
+    }
+
+    positions.unshift(peak.index);
+  }
+
+  while (positions.length > 0) {
+    const next = positions[positions.length - 1] + roundedStep;
+
+    if (next > signal.length - 1 + tolerance) {
+      break;
+    }
+
+    const peak = getLocalPeak(signal, next, tolerance);
+
+    if (peak.value < extensionMinStrength) {
+      break;
+    }
+
+    positions.push(peak.index);
+  }
+
+  return positions.filter(
+    (position, index) =>
+      index === 0 || position - positions[index - 1] > Math.max(2, tolerance * 0.35)
+  );
+}
+
+function buildRegularValleyPositions(signal: number[], step: number): number[] {
+  const roundedStep = Math.max(6, Math.round(step));
+  const tolerance = Math.max(2, Math.round(roundedStep * 0.24));
   const average =
     signal.reduce((sum, value) => sum + value, 0) / Math.max(signal.length, 1);
-  const max = Math.max(...signal, average);
-  const minStrength = average + (max - average) * 0.15;
+  const min = Math.min(...signal, average);
+  const extensionMaxStrength = average - (average - min) * 0.05;
+  let bestOffset = 0;
+  let bestScore = Number.NEGATIVE_INFINITY;
 
-  while (positions.length > 2 && (signal[positions[0]] ?? 0) < minStrength) {
-    positions.shift();
+  for (let offset = 0; offset < roundedStep; offset += 1) {
+    let score = 0;
+    let samples = 0;
+
+    for (let pos = offset; pos < signal.length; pos += roundedStep) {
+      const valley = getLocalValley(signal, pos, tolerance);
+      const center = getLocalPeak(signal, pos + roundedStep / 2, tolerance);
+      score += center.value - valley.value;
+      samples += 1;
+    }
+
+    if (samples > 0 && score > bestScore) {
+      bestScore = score;
+      bestOffset = offset;
+    }
   }
 
-  while (
-    positions.length > 2 &&
-    (signal[positions[positions.length - 1]] ?? 0) < minStrength
-  ) {
-    positions.pop();
+  const positions: number[] = [];
+  for (let pos = bestOffset; pos < signal.length; pos += roundedStep) {
+    const valley = getLocalValley(signal, pos, tolerance);
+    if (positions.length === 0 || valley.index - positions[positions.length - 1] > 2) {
+      positions.push(valley.index);
+    }
   }
 
-  return positions;
+  while (positions.length > 0) {
+    const next = positions[0] - roundedStep;
+
+    if (next < -tolerance) {
+      break;
+    }
+
+    const valley = getLocalValley(signal, next, tolerance);
+
+    if (valley.value > extensionMaxStrength) {
+      break;
+    }
+
+    positions.unshift(valley.index);
+  }
+
+  while (positions.length > 0) {
+    const next = positions[positions.length - 1] + roundedStep;
+
+    if (next > signal.length - 1 + tolerance) {
+      break;
+    }
+
+    const valley = getLocalValley(signal, next, tolerance);
+
+    if (valley.value > extensionMaxStrength) {
+      break;
+    }
+
+    positions.push(valley.index);
+  }
+
+  return positions.filter(
+    (position, index) =>
+      index === 0 || position - positions[index - 1] > Math.max(2, tolerance * 0.35)
+  );
+}
+
+function evaluateSpacingCandidate(signal: number[], lag: number): number {
+  const positions = buildRegularLinePositions(signal, lag);
+
+  if (positions.length < 3) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const diffs = positions.slice(1).map((position, index) => position - positions[index]);
+  const meanDiff =
+    diffs.reduce((sum, value) => sum + value, 0) / Math.max(1, diffs.length);
+  const deviation =
+    diffs.reduce((sum, value) => sum + Math.abs(value - meanDiff), 0) /
+    Math.max(1, diffs.length);
+  const regularity = 1 / (1 + deviation / Math.max(1, meanDiff));
+
+  const lineStrength =
+    positions.reduce((sum, position) => sum + (signal[position] ?? 0), 0) /
+    Math.max(1, positions.length);
+  const midpointStrength =
+    diffs.reduce((sum, diff, index) => {
+      const midpoint = positions[index] + diff / 2;
+      return sum + getSignalWindowAverage(signal, midpoint, Math.max(1, diff * 0.12));
+    }, 0) / Math.max(1, diffs.length);
+  const interiorPeakStrength =
+    diffs.reduce((sum, diff, index) => {
+      return (
+        sum +
+        getInteriorPeakStrength(
+          signal,
+          positions[index],
+          positions[index + 1],
+          Math.max(2, diff * 0.16)
+        )
+      );
+    }, 0) / Math.max(1, diffs.length);
+  const contrast = Math.max(0, lineStrength - midpointStrength);
+  const contrastRatio = contrast / Math.max(lineStrength, 1);
+  const lineCountFactor = Math.min(1, Math.max(0.08, (positions.length - 1) / 24));
+  const largeLagPenalty =
+    positions.length <= 6 && lag > signal.length / 12 ? 0.18 : 1;
+  const interiorPenalty = Math.max(
+    0.12,
+    1 - interiorPeakStrength / Math.max(lineStrength, 1)
+  );
+
+  return (
+    contrastRatio *
+    (0.72 + regularity * 0.58) *
+    lineCountFactor *
+    interiorPenalty *
+    interiorPenalty *
+    largeLagPenalty
+  );
+}
+
+function evaluateValleySpacingCandidate(signal: number[], lag: number): number {
+  const positions = buildRegularValleyPositions(signal, lag);
+
+  if (positions.length < 3) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const diffs = positions.slice(1).map((position, index) => position - positions[index]);
+  const meanDiff =
+    diffs.reduce((sum, value) => sum + value, 0) / Math.max(1, diffs.length);
+  const deviation =
+    diffs.reduce((sum, value) => sum + Math.abs(value - meanDiff), 0) /
+    Math.max(1, diffs.length);
+  const regularity = 1 / (1 + deviation / Math.max(1, meanDiff));
+  const boundaryStrength =
+    positions.reduce((sum, position) => sum + (signal[position] ?? 0), 0) /
+    Math.max(1, positions.length);
+  const centerStrength =
+    diffs.reduce((sum, diff, index) => {
+      return (
+        sum +
+        getLocalPeak(
+          signal,
+          positions[index] + diff / 2,
+          Math.max(1, diff * 0.22)
+        ).value
+      );
+    }, 0) / Math.max(1, diffs.length);
+  const contrastRatio = Math.max(
+    0,
+    (centerStrength - boundaryStrength) / Math.max(centerStrength, 1)
+  );
+  const boundaryDepth = Math.max(
+    0.12,
+    1 - boundaryStrength / Math.max(centerStrength, 1)
+  );
+  const lineCountFactor = Math.min(1, Math.max(0.08, (positions.length - 1) / 24));
+
+  return contrastRatio * (0.72 + regularity * 0.58) * lineCountFactor * boundaryDepth;
+}
+
+function estimateDominantSpacing(signal: number[]): number {
+  const candidateLags = collectSpacingCandidates(signal);
+  let bestLag = candidateLags[0] ?? getSearchLagBounds(signal.length).minLag;
+  let bestQuality = Number.NEGATIVE_INFINITY;
+
+  candidateLags.forEach((lag) => {
+    const quality = evaluateSpacingCandidate(signal, lag);
+
+    if (
+      quality > bestQuality ||
+      (Math.abs(quality - bestQuality) < 1.5 && lag < bestLag)
+    ) {
+      bestQuality = quality;
+      bestLag = lag;
+    }
+  });
+
+  return bestLag;
 }
 
 function computeLineSignal(
@@ -224,10 +560,15 @@ function computeLineSignal(
     { length: axis === "vertical" ? width : height },
     () => 0
   );
+  const coverage = Array.from({ length: signal.length }, () => 0);
+  const continuity = Array.from({ length: signal.length }, () => 0);
 
   if (axis === "vertical") {
     for (let x = 0; x < width; x += 1) {
       let score = 0;
+      let active = 0;
+      let longestRun = 0;
+      let currentRun = 0;
 
       for (let y = 0; y < height; y += 1) {
         const index = (y * width + x) * 4;
@@ -241,14 +582,28 @@ function computeLineSignal(
           Math.abs(getLuminance(pixels[left], pixels[left + 1], pixels[left + 2]) -
             getLuminance(pixels[right], pixels[right + 1], pixels[right + 2]));
 
-        score += darkness * 0.35 + edge * 0.65;
+        const response = edge * 0.82 + darkness * 0.18;
+        score += response;
+
+        if (edge > 14 || (edge > 8 && darkness > 40) || darkness > 105) {
+          active += 1;
+          currentRun += 1;
+          longestRun = Math.max(longestRun, currentRun);
+        } else {
+          currentRun = 0;
+        }
       }
 
       signal[x] = score / height;
+      coverage[x] = active / Math.max(1, height);
+      continuity[x] = longestRun / Math.max(1, height);
     }
   } else {
     for (let y = 0; y < height; y += 1) {
       let score = 0;
+      let active = 0;
+      let longestRun = 0;
+      let currentRun = 0;
 
       for (let x = 0; x < width; x += 1) {
         const index = (y * width + x) * 4;
@@ -262,14 +617,129 @@ function computeLineSignal(
           Math.abs(getLuminance(pixels[top], pixels[top + 1], pixels[top + 2]) -
             getLuminance(pixels[bottom], pixels[bottom + 1], pixels[bottom + 2]));
 
-        score += darkness * 0.35 + edge * 0.65;
+        const response = edge * 0.82 + darkness * 0.18;
+        score += response;
+
+        if (edge > 14 || (edge > 8 && darkness > 40) || darkness > 105) {
+          active += 1;
+          currentRun += 1;
+          longestRun = Math.max(longestRun, currentRun);
+        } else {
+          currentRun = 0;
+        }
       }
 
       signal[y] = score / width;
+      coverage[y] = active / Math.max(1, width);
+      continuity[y] = longestRun / Math.max(1, width);
+    }
+  }
+
+  const blended = signal.map(
+    (value, index) =>
+      value * 0.62 + coverage[index] * 255 * 0.22 + continuity[index] * 255 * 0.2
+  );
+  const lightlySmoothed = smoothSignal(blended, 1);
+  const broadlySmoothed = smoothSignal(blended, 3);
+
+  return lightlySmoothed.map(
+    (value, index) => value * 0.38 + broadlySmoothed[index] * 0.62
+  );
+}
+
+function computeInkSignal(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  axis: "horizontal" | "vertical"
+): number[] {
+  const signal = Array.from(
+    { length: axis === "vertical" ? width : height },
+    () => 0
+  );
+
+  if (axis === "vertical") {
+    for (let x = 0; x < width; x += 1) {
+      let darknessSum = 0;
+      let saturationSum = 0;
+
+      for (let y = 0; y < height; y += 1) {
+        const index = (y * width + x) * 4;
+        const r = pixels[index];
+        const g = pixels[index + 1];
+        const b = pixels[index + 2];
+        darknessSum += 255 - getLuminance(r, g, b);
+        saturationSum += Math.max(r, g, b) - Math.min(r, g, b);
+      }
+
+      signal[x] = darknessSum / Math.max(1, height) + saturationSum / Math.max(1, height) * 0.18;
+    }
+  } else {
+    for (let y = 0; y < height; y += 1) {
+      let darknessSum = 0;
+      let saturationSum = 0;
+
+      for (let x = 0; x < width; x += 1) {
+        const index = (y * width + x) * 4;
+        const r = pixels[index];
+        const g = pixels[index + 1];
+        const b = pixels[index + 2];
+        darknessSum += 255 - getLuminance(r, g, b);
+        saturationSum += Math.max(r, g, b) - Math.min(r, g, b);
+      }
+
+      signal[y] = darknessSum / Math.max(1, width) + saturationSum / Math.max(1, width) * 0.18;
     }
   }
 
   return smoothSignal(signal, 2);
+}
+
+function detectAxisLinePositions(
+  lineSignal: number[],
+  inkSignal: number[]
+): number[] {
+  const candidateLags = new Set<number>([
+    ...collectSpacingCandidates(lineSignal),
+    ...collectSpacingCandidates(inkSignal),
+  ]);
+  let bestLinePositions = buildRegularLinePositions(
+    lineSignal,
+    estimateDominantSpacing(lineSignal)
+  );
+  let bestLineScore = Number.NEGATIVE_INFINITY;
+  let bestValleyPositions = buildRegularValleyPositions(
+    inkSignal,
+    estimateDominantSpacing(inkSignal)
+  );
+  let bestValleyScore = Number.NEGATIVE_INFINITY;
+
+  Array.from(candidateLags)
+    .sort((left, right) => left - right)
+    .forEach((lag) => {
+      const lineScore = evaluateSpacingCandidate(lineSignal, lag);
+
+      if (lineScore > bestLineScore) {
+        bestLineScore = lineScore;
+        bestLinePositions = buildRegularLinePositions(lineSignal, lag);
+      }
+
+      const valleyScore = evaluateValleySpacingCandidate(inkSignal, lag);
+
+      if (valleyScore > bestValleyScore) {
+        bestValleyScore = valleyScore;
+        bestValleyPositions = buildRegularValleyPositions(inkSignal, lag);
+      }
+    });
+
+  const lineCount = Math.max(0, bestLinePositions.length - 1);
+  const valleyCount = Math.max(0, bestValleyPositions.length - 1);
+  const shouldUseValley =
+    valleyCount > lineCount &&
+    valleyCount <= Math.max(6, Math.round(lineCount * 1.35)) &&
+    bestValleyScore >= bestLineScore * 0.55;
+
+  return shouldUseValley ? bestValleyPositions : bestLinePositions;
 }
 
 function normalizeLinePositions(
@@ -310,6 +780,161 @@ function getCellRect(
     y: horizontalLines[row],
     width: Math.max(1, verticalLines[col + 1] - verticalLines[col]),
     height: Math.max(1, horizontalLines[row + 1] - horizontalLines[row]),
+  };
+}
+
+function estimateCellDominantColorFromPixels(
+  pixels: Uint8ClampedArray,
+  imageWidth: number,
+  imageHeight: number,
+  rect: CropRect
+): {
+  r: number;
+  g: number;
+  b: number;
+  meanDiff: number;
+  activeRatio: number;
+  dominantRatio: number;
+} {
+  const inset = Math.max(1, Math.round(Math.min(rect.width, rect.height) * 0.12));
+  const sampleX = clamp(Math.round(rect.x + inset), 0, Math.max(0, imageWidth - 1));
+  const sampleY = clamp(Math.round(rect.y + inset), 0, Math.max(0, imageHeight - 1));
+  const sampleWidth = Math.max(
+    2,
+    Math.min(
+      imageWidth - sampleX,
+      Math.round(rect.width - inset * 2)
+    )
+  );
+  const sampleHeight = Math.max(
+    2,
+    Math.min(
+      imageHeight - sampleY,
+      Math.round(rect.height - inset * 2)
+    )
+  );
+
+  const buckets = new Map<
+    string,
+    { weight: number; sumR: number; sumG: number; sumB: number }
+  >();
+  const samples: Array<{ r: number; g: number; b: number; weight: number }> = [];
+  let totalWeight = 0;
+
+  for (let y = 0; y < sampleHeight; y += 1) {
+    for (let x = 0; x < sampleWidth; x += 1) {
+      const sourceX = sampleX + x;
+      const sourceY = sampleY + y;
+      const index = (sourceY * imageWidth + sourceX) * 4;
+      const r = pixels[index];
+      const g = pixels[index + 1];
+      const b = pixels[index + 2];
+      const alpha = pixels[index + 3];
+
+      if (alpha < 32) {
+        continue;
+      }
+
+      const normalizedX =
+        sampleWidth > 1 ? Math.abs((x + 0.5) / sampleWidth - 0.5) * 2 : 0;
+      const normalizedY =
+        sampleHeight > 1 ? Math.abs((y + 0.5) / sampleHeight - 0.5) * 2 : 0;
+      const edgeBias = Math.max(normalizedX, normalizedY);
+      const weight = 1 + edgeBias * 0.85;
+      const key = `${Math.round(r / 16)}-${Math.round(g / 16)}-${Math.round(b / 16)}`;
+      const bucket = buckets.get(key) ?? {
+        weight: 0,
+        sumR: 0,
+        sumG: 0,
+        sumB: 0,
+      };
+
+      bucket.weight += weight;
+      bucket.sumR += r * weight;
+      bucket.sumG += g * weight;
+      bucket.sumB += b * weight;
+      buckets.set(key, bucket);
+
+      samples.push({ r, g, b, weight });
+      totalWeight += weight;
+    }
+  }
+
+  if (samples.length === 0 || totalWeight <= 0) {
+    return {
+      r: 255,
+      g: 255,
+      b: 255,
+      meanDiff: 0,
+      activeRatio: 0,
+      dominantRatio: 1,
+    };
+  }
+
+  const dominantBucket = Array.from(buckets.values()).reduce<{
+    weight: number;
+    sumR: number;
+    sumG: number;
+    sumB: number;
+  } | null>((best, bucket) => {
+    if (!best || bucket.weight > best.weight) {
+      return bucket;
+    }
+
+    return best;
+  }, null);
+
+  const initialColor = dominantBucket
+    ? {
+        r: dominantBucket.sumR / dominantBucket.weight,
+        g: dominantBucket.sumG / dominantBucket.weight,
+        b: dominantBucket.sumB / dominantBucket.weight,
+      }
+    : { r: 255, g: 255, b: 255 };
+
+  const refineThreshold = Math.max(
+    18,
+    Math.min(42, Math.round(Math.min(sampleWidth, sampleHeight) * 1.7))
+  );
+  let refinedWeight = 0;
+  let refinedR = 0;
+  let refinedG = 0;
+  let refinedB = 0;
+  let totalDiff = 0;
+  let activeWeight = 0;
+
+  samples.forEach((sample) => {
+    const diff = getColorDistance(sample, initialColor);
+    totalDiff += diff * sample.weight;
+
+    if (diff <= refineThreshold) {
+      refinedWeight += sample.weight;
+      refinedR += sample.r * sample.weight;
+      refinedG += sample.g * sample.weight;
+      refinedB += sample.b * sample.weight;
+    } else {
+      activeWeight += sample.weight;
+    }
+  });
+
+  const finalColor =
+    refinedWeight > totalWeight * 0.16
+      ? {
+          r: Math.round(refinedR / refinedWeight),
+          g: Math.round(refinedG / refinedWeight),
+          b: Math.round(refinedB / refinedWeight),
+        }
+      : {
+          r: Math.round(initialColor.r),
+          g: Math.round(initialColor.g),
+          b: Math.round(initialColor.b),
+        };
+
+  return {
+    ...finalColor,
+    meanDiff: totalDiff / totalWeight,
+    activeRatio: activeWeight / totalWeight,
+    dominantRatio: refinedWeight / totalWeight,
   };
 }
 
@@ -388,15 +1013,18 @@ function isEmptyCell(sample: {
   b: number;
   meanDiff: number;
   activeRatio: number;
+  dominantRatio?: number;
 }): boolean {
   const luminance = getLuminance(sample.r, sample.g, sample.b);
   const maxChannel = Math.max(sample.r, sample.g, sample.b);
   const minChannel = Math.min(sample.r, sample.g, sample.b);
+  const dominantRatio = sample.dominantRatio ?? 1 - sample.activeRatio;
   return (
-    luminance > 236 &&
+    luminance > 242 &&
     maxChannel - minChannel < 18 &&
-    sample.meanDiff < 18 &&
-    sample.activeRatio < 0.12
+    sample.meanDiff < 12 &&
+    sample.activeRatio < 0.12 &&
+    dominantRatio > 0.68
   );
 }
 
@@ -505,29 +1133,44 @@ export async function cropImage(
   };
 }
 
-export async function detectGridGeometry(imageSource: string): Promise<GridGeometry> {
-  const image = await loadImage(imageSource);
-  const { canvas, context } = createCanvas(image.naturalWidth, image.naturalHeight);
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const verticalSignal = computeLineSignal(
-    imageData.data,
-    canvas.width,
-    canvas.height,
+export function detectGridGeometryFromPixels(options: {
+  pixels: Uint8ClampedArray;
+  width: number;
+  height: number;
+}): GridGeometry {
+  const verticalLineSignal = computeLineSignal(
+    options.pixels,
+    options.width,
+    options.height,
     "vertical"
   );
-  const horizontalSignal = computeLineSignal(
-    imageData.data,
-    canvas.width,
-    canvas.height,
+  const horizontalLineSignal = computeLineSignal(
+    options.pixels,
+    options.width,
+    options.height,
+    "horizontal"
+  );
+  const verticalInkSignal = computeInkSignal(
+    options.pixels,
+    options.width,
+    options.height,
+    "vertical"
+  );
+  const horizontalInkSignal = computeInkSignal(
+    options.pixels,
+    options.width,
+    options.height,
     "horizontal"
   );
 
-  const estimatedColStep = estimateDominantSpacing(verticalSignal);
-  const estimatedRowStep = estimateDominantSpacing(horizontalSignal);
-  const verticalLines = buildRegularLinePositions(verticalSignal, estimatedColStep);
-  const horizontalLines = buildRegularLinePositions(horizontalSignal, estimatedRowStep);
+  const verticalLines = detectAxisLinePositions(
+    verticalLineSignal,
+    verticalInkSignal
+  );
+  const horizontalLines = detectAxisLinePositions(
+    horizontalLineSignal,
+    horizontalInkSignal
+  );
 
   if (verticalLines.length < 2 || horizontalLines.length < 2) {
     throw new Error("自动识别行列失败，请重新裁切到像素格区域。");
@@ -545,6 +1188,19 @@ export async function detectGridGeometry(imageSource: string): Promise<GridGeome
     horizontalLines,
     verticalLines,
   };
+}
+
+export async function detectGridGeometry(imageSource: string): Promise<GridGeometry> {
+  const image = await loadImage(imageSource);
+  const { canvas, context } = createCanvas(image.naturalWidth, image.naturalHeight);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  return detectGridGeometryFromPixels({
+    pixels: imageData.data,
+    width: canvas.width,
+    height: canvas.height,
+  });
 }
 
 export function applyGridSizeOverride(
@@ -571,17 +1227,95 @@ export function applyGridSizeOverride(
   };
 }
 
+export function recognizePatternColorsFromPixels(options: {
+  pixels: Uint8ClampedArray;
+  width: number;
+  height: number;
+  brand: ColorBrand;
+  colorCount: number;
+  geometry: GridGeometry;
+}): ImportedPatternResult {
+  const palette = getPalette(options.colorCount);
+  const cells: ImportedPatternCell[][] = [];
+
+  for (let row = 0; row < options.geometry.rowCount; row += 1) {
+    const cellRow: ImportedPatternCell[] = [];
+
+    for (let col = 0; col < options.geometry.colCount; col += 1) {
+      const rect = getCellRect(options.geometry, row, col);
+      const background = estimateCellDominantColorFromPixels(
+        options.pixels,
+        options.width,
+        options.height,
+        rect
+      );
+      const estimatedHex = rgbToHex(background.r, background.g, background.b);
+
+      if (isEmptyCell(background)) {
+        cellRow.push({
+          row,
+          col,
+          state: "empty",
+          paletteIndex: null,
+          code: null,
+          matchedCode: null,
+          estimatedHex,
+          confidence: 1,
+          source: "color",
+        });
+        continue;
+      }
+
+      const paletteIndex = findClosestColor(background, palette);
+      const color = palette[paletteIndex];
+
+      cellRow.push({
+        row,
+        col,
+        state: "filled",
+        paletteIndex,
+        code: color.brandCodes?.[options.brand] ?? null,
+        matchedCode: color.brandCodes?.[options.brand] ?? null,
+        estimatedHex,
+        confidence: 1,
+        source: "color",
+      });
+    }
+
+    cells.push(cellRow);
+  }
+
+  return {
+    cells,
+    geometry: options.geometry,
+    palette,
+    unresolvedCount: 0,
+  };
+}
+
 export async function recognizeImportedPattern(options: {
   imageSource: string;
   brand: ColorBrand;
   colorCount: number;
-  mode: ImportRecognitionMode;
+  mode?: ImportRecognitionMode;
   geometry: GridGeometry;
 }): Promise<ImportedPatternResult> {
   const palette = getPalette(options.colorCount);
   const image = await loadImage(options.imageSource);
   const { canvas, context } = createCanvas(image.naturalWidth, image.naturalHeight);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+  if (options.mode !== "ocr") {
+    return recognizePatternColorsFromPixels({
+      pixels: imageData.data,
+      width: canvas.width,
+      height: canvas.height,
+      brand: options.brand,
+      colorCount: options.colorCount,
+      geometry: options.geometry,
+    });
+  }
 
   const cells: ImportedPatternCell[][] = [];
   const ocrCandidates: Array<{
@@ -610,25 +1344,7 @@ export async function recognizeImportedPattern(options: {
           matchedCode: null,
           estimatedHex,
           confidence: 1,
-          source: options.mode === "ocr" ? "ocr" : "color",
-        });
-        continue;
-      }
-
-      if (options.mode === "color") {
-        const paletteIndex = findClosestColor(background, palette);
-        const color = palette[paletteIndex];
-
-        cellRow.push({
-          row,
-          col,
-          state: "filled",
-          paletteIndex,
-          code: color.brandCodes?.[options.brand] ?? null,
-          matchedCode: color.brandCodes?.[options.brand] ?? null,
-          estimatedHex,
-          confidence: 1,
-          source: "color",
+          source: "ocr",
         });
         continue;
       }

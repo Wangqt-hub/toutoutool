@@ -20,23 +20,20 @@ interface ImageUploadStepProps {
   previewUrl?: string | null;
   previewLabel?: string | null;
   disabled?: boolean;
+  allowReplaceWhenPreviewed?: boolean;
 }
 
 const MAX_SOURCE_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_UPLOAD_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_UPLOAD_EDGE = 1280;
 const PASSTHROUGH_FILE_BYTES = 1500 * 1024;
-const PASSTHROUGH_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
+const PASSTHROUGH_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function loadImageElement(url: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new window.Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("图片加载失败，请重新上传"));
+    image.onerror = () => reject(new Error("图片加载失败，请重新上传。"));
     image.src = url;
   });
 }
@@ -68,7 +65,7 @@ function canvasToJpegBlob(
     canvas.toBlob(
       (blob) => {
         if (!blob) {
-          reject(new Error("图片压缩失败，请更换图片后再试"));
+          reject(new Error("图片压缩失败，请换一张图片再试。"));
           return;
         }
 
@@ -113,7 +110,7 @@ async function normalizeUploadImage(file: File): Promise<{
     const context = canvas.getContext("2d");
 
     if (!context) {
-      throw new Error("当前浏览器不支持图片预处理，请更换浏览器后重试");
+      throw new Error("当前浏览器不支持图片预处理，请更换浏览器后重试。");
     }
 
     canvas.width = targetWidth;
@@ -131,7 +128,7 @@ async function normalizeUploadImage(file: File): Promise<{
     }
 
     if (blob.size > MAX_UPLOAD_FILE_BYTES) {
-      throw new Error("图片压缩后仍超过 5MB，请换一张更小的图片");
+      throw new Error("图片压缩后仍超过 5MB，请换一张更小的图片。");
     }
 
     return {
@@ -156,15 +153,18 @@ export function ImageUploadStep({
   previewUrl,
   previewLabel,
   disabled = false,
+  allowReplaceWhenPreviewed = true,
 }: ImageUploadStepProps) {
   const [internalPreviewUrl, setInternalPreviewUrl] = useState<string | null>(
     null
   );
-  const [internalFileName, setInternalFileName] = useState<string>("");
+  const [internalFileName, setInternalFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const displayedPreviewUrl = previewUrl ?? internalPreviewUrl;
   const displayedFileName = previewLabel ?? internalFileName;
+  const canPickImage =
+    !disabled && (!displayedPreviewUrl || allowReplaceWhenPreviewed);
 
   useEffect(() => {
     return () => {
@@ -188,12 +188,12 @@ export function ImageUploadStep({
     }
 
     if (!sourceFile.type.startsWith("image/")) {
-      onError?.("请上传图片文件（JPG / PNG / WebP / BMP / HEIC）");
+      onError?.("请上传图片文件，例如 JPG、PNG、WebP、BMP 或 HEIC。");
       return;
     }
 
     if (sourceFile.size > MAX_SOURCE_FILE_BYTES) {
-      onError?.("图片原文件不能超过 20MB");
+      onError?.("原图不能超过 20MB。");
       return;
     }
 
@@ -211,7 +211,7 @@ export function ImageUploadStep({
       onImageSelect?.(objectUrl, normalized.file, metadata);
     } catch (error) {
       onError?.(
-        error instanceof Error ? error.message : "图片读取失败，请重新上传"
+        error instanceof Error ? error.message : "图片读取失败，请重新上传。"
       );
     } finally {
       event.target.value = "";
@@ -236,80 +236,82 @@ export function ImageUploadStep({
     }
   };
 
-  const handleClick = () => {
-    if (!disabled) {
-      fileInputRef.current?.click();
-    }
-  };
-
   return (
     <Card className="space-y-4">
       <div className="space-y-2">
-        <label className="text-xs font-medium text-slate-700">
-          1. 上传图片
-        </label>
+        <label className="text-xs font-medium text-slate-700">上传图片</label>
 
         {!displayedPreviewUrl ? (
-          <div
-            className={`border-2 border-dashed rounded-3xl p-6 flex flex-col items-center justify-center gap-3 bg-cream-50/60 transition-colors ${
+          <button
+            type="button"
+            className={`flex w-full flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed bg-cream-50/60 p-6 text-center transition-colors ${
               disabled
-                ? "border-cream-100 cursor-not-allowed opacity-60"
-                : "border-cream-100 cursor-pointer hover:border-accent-brown/50"
+                ? "cursor-not-allowed border-cream-100 opacity-60"
+                : "cursor-pointer border-cream-100 hover:border-accent-brown/50"
             }`}
-            onClick={handleClick}
+            onClick={() => {
+              if (canPickImage) {
+                fileInputRef.current?.click();
+              }
+            }}
           >
-            <div className="w-12 h-12 rounded-full bg-accent-brown/10 flex items-center justify-center">
-              <Image className="w-6 h-6 text-accent-brown" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-brown/10">
+              <Image className="h-6 w-6 text-accent-brown" />
             </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-slate-700">
-                点击或拖拽上传图片
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                支持 JPG、PNG、WebP、BMP、HEIC，上传前会自动优化
-              </p>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-slate-700">点击上传图片</p>
+              <p className="text-xs text-slate-500">支持常见图片格式，系统会自动压缩优化。</p>
             </div>
-          </div>
+          </button>
         ) : (
           <div className="relative rounded-3xl border border-cream-100 bg-cream-50/60 p-3">
             <button
               type="button"
               onClick={handleRemove}
               disabled={disabled}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 border border-cream-100 flex items-center justify-center hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-cream-100 bg-white/90 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="移除图片"
             >
-              <X className="w-4 h-4 text-slate-600" />
+              <X className="h-4 w-4 text-slate-600" />
             </button>
 
             <div className="flex gap-3">
               <img
                 src={displayedPreviewUrl}
-                alt="图片预览"
-                className="w-24 h-24 object-cover rounded-2xl border border-cream-100"
+                alt="上传图片预览"
+                className="h-24 w-24 rounded-2xl border border-cream-100 object-cover"
               />
-              <div className="flex-grow flex items-center">
-                <div>
-                  <p className="text-sm font-medium text-slate-700 truncate max-w-[200px]">
+
+              <div className="flex flex-1 items-center">
+                <div className="space-y-1">
+                  <p className="max-w-[220px] truncate text-sm font-medium text-slate-700">
                     {displayedFileName || "当前图片"}
                   </p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-slate-500">
                     {disabled
-                      ? "AI 生成中，暂时不能更换图片"
-                      : "点击下方按钮可以重新选择图片"}
+                      ? "处理中，暂时不能修改。"
+                      : allowReplaceWhenPreviewed
+                      ? "可以直接重新选择图片。"
+                      : "如需更换图片，请先移除当前图片。"}
                   </p>
                 </div>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleClick}
-              disabled={disabled}
-              className="text-xs text-accent-brown font-medium hover:underline mt-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              重新选择
-            </button>
+            {allowReplaceWhenPreviewed ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (canPickImage) {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                disabled={disabled}
+                className="mt-2 text-xs font-medium text-accent-brown hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                重新选择
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -321,10 +323,6 @@ export function ImageUploadStep({
           className="hidden"
           disabled={disabled}
         />
-
-        <p className="text-[11px] text-slate-500">
-          建议使用清晰、主体明确的图片；移动端大图会先压缩后再上传，生成会更稳定。
-        </p>
       </div>
     </Card>
   );
