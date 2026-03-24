@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, FileImage, Image, Wand2 } from "lucide-react";
@@ -59,18 +60,21 @@ interface ImportModeSelectorProps {
 
 export function ImportModeSelector({ onModeSelect }: ImportModeSelectorProps) {
   const router = useRouter();
+  const routes: Record<ImportMode, string> = {
+    image: "/tools/bead/import-image",
+    ai: "/tools/bead/import-ai",
+    pattern: "/tools/bead/import-pattern",
+  };
+
+  useEffect(() => {
+    Object.values(routes).forEach((route) => router.prefetch(route as any));
+  }, [router]);
 
   const handleSelect = (modeId: ImportMode) => {
     if (onModeSelect) {
       onModeSelect(modeId);
       return;
     }
-
-    const routes: Record<ImportMode, string> = {
-      image: "/tools/bead/import-image",
-      ai: "/tools/bead/import-ai",
-      pattern: "/tools/bead/import-pattern",
-    };
 
     router.push(routes[modeId] as any);
   };
