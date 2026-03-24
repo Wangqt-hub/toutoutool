@@ -17,8 +17,13 @@ const DASHSCOPE_ASYNC_GENERATE_URL =
   "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation";
 const DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks";
 const DASHSCOPE_MODEL = "wan2.6-image";
+const HISTORY_IMAGE_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
+const HISTORY_PREVIEW_MAX_EDGE = 1200;
+const HISTORY_THUMBNAIL_EDGE = 160;
+const OPTIMIZED_IMAGE_CONTENT_TYPE = "image/webp";
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
+type GenerationImageKind = "source" | "ai";
 
 type DashScopeTaskResponse = {
   output?: {
@@ -132,6 +137,57 @@ export function buildAIImagePath(
   generationId: string
 ): string {
   return `${userId}/${generationId}/ai.png`;
+}
+
+function buildGenerationDisplayImagePath(
+  userId: string,
+  generationId: string,
+  kind: GenerationImageKind
+): string {
+  return `${userId}/${generationId}/${kind}-display.webp`;
+}
+
+function buildGenerationThumbnailImagePath(
+  userId: string,
+  generationId: string,
+  kind: GenerationImageKind
+): string {
+  return `${userId}/${generationId}/${kind}-thumb.webp`;
+}
+
+async function createOptimizedImageBuffers(
+  sourceBuffer: Uint8Array
+): Promise<{ display: Uint8Array; thumbnail: Uint8Array }> {
+  const sharpModule = await import("sharp");
+  const sharp = sharpModule.default;
+
+  const [display, thumbnail] = await Promise.all([
+    sharp(sourceBuffer)
+      .rotate()
+      .resize({
+        width: HISTORY_PREVIEW_MAX_EDGE,
+        height: HISTORY_PREVIEW_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 82 })
+      .toBuffer(),
+    sharp(sourceBuffer)
+      .rotate()
+      .resize({
+        width: HISTORY_THUMBNAIL_EDGE,
+        height: HISTORY_THUMBNAIL_EDGE,
+        fit: "cover",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 70 })
+      .toBuffer(),
+  ]);
+
+  return {
+    display: new Uint8Array(display),
+    thumbnail: new Uint8Array(thumbnail),
+  };
 }
 
 export function mapDashScopeTaskStatus(
@@ -275,6 +331,41 @@ export async function uploadStorageObject(options: {
   }
 }
 
+export async function uploadGenerationImageVariants(options: {
+  supabaseAdmin: SupabaseAdminClient;
+  userId: string;
+  generationId: string;
+  kind: GenerationImageKind;
+  sourceBuffer: Uint8Array;
+}): Promise<void> {
+  const { display, thumbnail } = await createOptimizedImageBuffers(
+    options.sourceBuffer
+  );
+
+  await Promise.all([
+    uploadStorageObject({
+      supabaseAdmin: options.supabaseAdmin,
+      path: buildGenerationDisplayImagePath(
+        options.userId,
+        options.generationId,
+        options.kind
+      ),
+      body: display,
+      contentType: OPTIMIZED_IMAGE_CONTENT_TYPE,
+    }),
+    uploadStorageObject({
+      supabaseAdmin: options.supabaseAdmin,
+      path: buildGenerationThumbnailImagePath(
+        options.userId,
+        options.generationId,
+        options.kind
+      ),
+      body: thumbnail,
+      contentType: OPTIMIZED_IMAGE_CONTENT_TYPE,
+    }),
+  ]);
+}
+
 export async function createSignedStorageUrl(options: {
   supabaseAdmin: SupabaseAdminClient;
   path: string;
@@ -300,6 +391,31 @@ export async function createSignedStorageUrl(options: {
   return data.signedUrl;
 }
 
+async function createHistoryImageUrl(options: {
+  supabaseAdmin: SupabaseAdminClient;
+  primaryPath: string;
+  fallbackPath: string;
+  fallbackUrl: string;
+}): Promise<string> {
+  try {
+    return await createSignedStorageUrl({
+      supabaseAdmin: options.supabaseAdmin,
+      path: options.primaryPath,
+      expiresIn: HISTORY_IMAGE_URL_TTL_SECONDS,
+    });
+  } catch {
+    try {
+      return await createSignedStorageUrl({
+        supabaseAdmin: options.supabaseAdmin,
+        path: options.fallbackPath,
+        expiresIn: HISTORY_IMAGE_URL_TTL_SECONDS,
+      });
+    } catch {
+      return options.fallbackUrl;
+    }
+  }
+}
+
 export async function buildAIGenerationHistoryItem(options: {
   supabaseAdmin: SupabaseAdminClient;
   row: AIGenerationHistoryRow;
@@ -310,52 +426,48 @@ export async function buildAIGenerationHistoryItem(options: {
     : null;
   const [sourceImageUrl, sourceThumbnailUrl, aiImageUrl, aiThumbnailUrl] =
     await Promise.all([
-      createSignedStorageUrl({
+      createHistoryImageUrl({
         supabaseAdmin: options.supabaseAdmin,
-        path: options.row.source_image_path,
-        expiresIn: 60 * 60,
-        transform: {
-          width: 1200,
-          height: 1200,
-          resize: "contain",
-          quality: 82,
-        },
+        primaryPath: buildGenerationDisplayImagePath(
+          options.row.user_id,
+          options.row.id,
+          "source"
+        ),
+        fallbackPath: options.row.source_image_path,
+        fallbackUrl: sourceImageProxyUrl,
       }),
-      createSignedStorageUrl({
+      createHistoryImageUrl({
         supabaseAdmin: options.supabaseAdmin,
-        path: options.row.source_image_path,
-        expiresIn: 60 * 60,
-        transform: {
-          width: 160,
-          height: 160,
-          resize: "cover",
-          quality: 70,
-        },
+        primaryPath: buildGenerationThumbnailImagePath(
+          options.row.user_id,
+          options.row.id,
+          "source"
+        ),
+        fallbackPath: options.row.source_image_path,
+        fallbackUrl: sourceImageProxyUrl,
       }),
       options.row.ai_image_path
-        ? createSignedStorageUrl({
+        ? createHistoryImageUrl({
             supabaseAdmin: options.supabaseAdmin,
-            path: options.row.ai_image_path,
-            expiresIn: 60 * 60,
-            transform: {
-              width: 1200,
-              height: 1200,
-              resize: "contain",
-              quality: 82,
-            },
+            primaryPath: buildGenerationDisplayImagePath(
+              options.row.user_id,
+              options.row.id,
+              "ai"
+            ),
+            fallbackPath: options.row.ai_image_path,
+            fallbackUrl: aiImageProxyUrl!,
           })
         : Promise.resolve(null),
       options.row.ai_image_path
-        ? createSignedStorageUrl({
+        ? createHistoryImageUrl({
             supabaseAdmin: options.supabaseAdmin,
-            path: options.row.ai_image_path,
-            expiresIn: 60 * 60,
-            transform: {
-              width: 160,
-              height: 160,
-              resize: "cover",
-              quality: 70,
-            },
+            primaryPath: buildGenerationThumbnailImagePath(
+              options.row.user_id,
+              options.row.id,
+              "ai"
+            ),
+            fallbackPath: options.row.ai_image_path,
+            fallbackUrl: aiImageProxyUrl!,
           })
         : Promise.resolve(null),
     ]);
@@ -397,17 +509,27 @@ export async function uploadAIResultFromUrl(options: {
   }
 
   const contentType = response.headers.get("content-type") || "image/png";
-  const blob = new Blob([await response.arrayBuffer()], {
-    type: contentType,
-  });
+  const sourceBuffer = new Uint8Array(await response.arrayBuffer());
   const path = buildAIImagePath(options.userId, options.generationId);
 
   await uploadStorageObject({
     supabaseAdmin: options.supabaseAdmin,
     path,
-    body: blob,
+    body: sourceBuffer,
     contentType,
   });
+
+  try {
+    await uploadGenerationImageVariants({
+      supabaseAdmin: options.supabaseAdmin,
+      userId: options.userId,
+      generationId: options.generationId,
+      kind: "ai",
+      sourceBuffer,
+    });
+  } catch {
+    // Variant uploads are best-effort and should not fail the main task.
+  }
 
   return path;
 }
@@ -544,9 +666,18 @@ export async function pruneOldGenerations(options: {
   }
 
   const paths = rows.flatMap((row) =>
-    [row.source_image_path, row.ai_image_path].filter(
-      (value): value is string => Boolean(value)
-    )
+    [
+      row.source_image_path,
+      buildGenerationDisplayImagePath(options.userId, row.id, "source"),
+      buildGenerationThumbnailImagePath(options.userId, row.id, "source"),
+      row.ai_image_path,
+      row.ai_image_path
+        ? buildGenerationDisplayImagePath(options.userId, row.id, "ai")
+        : null,
+      row.ai_image_path
+        ? buildGenerationThumbnailImagePath(options.userId, row.id, "ai")
+        : null,
+    ].filter((value): value is string => Boolean(value))
   );
 
   if (paths.length > 0) {

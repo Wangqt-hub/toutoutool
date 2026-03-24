@@ -86,6 +86,28 @@ function getStyleName(styleId: string): string {
   return PIXEL_STYLES.find((style) => style.id === styleId)?.name || "自定义";
 }
 
+function getPreferredSourceImageUrl(item: AIGenerationHistoryItem): string {
+  return item.sourceImageUrl || item.sourceImageProxyUrl;
+}
+
+function getPreferredAIImageUrl(
+  item: AIGenerationHistoryItem
+): string | null {
+  return item.aiImageUrl || item.aiImageProxyUrl;
+}
+
+function getPreferredHistoryThumbnailUrl(
+  item: AIGenerationHistoryItem
+): string {
+  return (
+    item.historyThumbnailUrl ||
+    item.aiThumbnailUrl ||
+    item.sourceThumbnailUrl ||
+    getPreferredAIImageUrl(item) ||
+    getPreferredSourceImageUrl(item)
+  );
+}
+
 async function loadImageMetadata(url: string): Promise<ImageMetadata | null> {
   return new Promise((resolve) => {
     const image = new window.Image();
@@ -325,18 +347,19 @@ export default function AIGeneratePage() {
   const restoreHistorySelection = useCallback(
     async (item: AIGenerationHistoryItem, label: string) => {
       const requestId = ++restoreRequestIdRef.current;
+      const sourceImageUrl = getPreferredSourceImageUrl(item);
+      const previewImageUrl =
+        getPreferredAIImageUrl(item) || sourceImageUrl;
 
       setSelectedHistoryId(item.id);
-      setSourcePreviewUrl(item.sourceImageProxyUrl || item.sourceImageUrl);
+      setSourcePreviewUrl(sourceImageUrl);
       setSourcePreviewLabel(label);
       setSelectedStyle(item.styleId || "anime");
       setCustomPrompt(item.prompt);
       setImageFile(null);
       resetPatternState();
 
-      const preferredMetadata = await loadImageMetadata(
-        item.aiImageProxyUrl || item.aiImageUrl || item.sourceImageProxyUrl
-      );
+      const preferredMetadata = await loadImageMetadata(previewImageUrl);
 
       if (restoreRequestIdRef.current !== requestId) {
         return;
@@ -646,7 +669,11 @@ export default function AIGeneratePage() {
   ]);
 
   const handleCreatePattern = useCallback(async () => {
-    if (!selectedCompletedHistory?.aiImageProxyUrl) {
+    const aiImageUrl = selectedCompletedHistory
+      ? getPreferredAIImageUrl(selectedCompletedHistory)
+      : null;
+
+    if (!aiImageUrl) {
       setError("请先选择一条已完成的 AI 记录。");
       return;
     }
@@ -664,7 +691,7 @@ export default function AIGeneratePage() {
       };
 
       const result = await processImage(
-        selectedCompletedHistory.aiImageProxyUrl,
+        aiImageUrl,
         settings,
         selectedPalette
       );
@@ -804,13 +831,17 @@ export default function AIGeneratePage() {
       );
     }
 
-    if (currentStep === 2 && selectedHistory?.aiImageProxyUrl) {
+    const selectedHistoryAIImageUrl = selectedHistory
+      ? getPreferredAIImageUrl(selectedHistory)
+      : null;
+
+    if (currentStep === 2 && selectedHistory && selectedHistoryAIImageUrl) {
       return (
         <BeadImagePreviewCard
           badge="AI Result"
           title="当前 AI 图片"
           description="已完成的 AI 结果。"
-          imageUrl={selectedHistory.aiImageProxyUrl}
+          imageUrl={selectedHistoryAIImageUrl}
           alt="AI 生成结果"
           fit="contain"
           meta={[
@@ -988,7 +1019,7 @@ export default function AIGeneratePage() {
                       >
                         <div className="flex gap-3">
                           <img
-                            src={item.historyThumbnailUrl}
+                            src={getPreferredHistoryThumbnailUrl(item)}
                             alt="历史记录缩略图"
                             loading="lazy"
                             decoding="async"
