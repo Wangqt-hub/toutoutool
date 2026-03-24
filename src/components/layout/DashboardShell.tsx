@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 import { LogoutButton } from "@/components/ui/logout-button";
 import { MembershipPreviewButton } from "@/components/ui/membership-preview";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState(76);
@@ -71,6 +73,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       observer.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    const routes = ["/tools", "/tools/bead", "/tools/travel", "/tools/ideas"];
+    routes.forEach((route) => router.prefetch(route as any));
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.94),rgba(255,247,237,0.92)_36%,rgba(255,251,235,0.88)_100%)]">
