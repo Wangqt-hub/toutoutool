@@ -3,9 +3,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
 import {
   isAIGenerationTerminal,
-  toAIGenerationHistoryItem,
 } from "@/lib/bead/aiGeneration";
 import {
+  buildAIGenerationHistoryItem,
   fetchDashScopeTask,
   getDashScopeErrorMessage,
   getProgressForStatus,
@@ -23,6 +23,20 @@ type RouteContext = {
     id: string;
   };
 };
+
+async function serializeGeneration(options: {
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
+  generation: Awaited<ReturnType<typeof getGenerationById>>;
+}) {
+  if (!options.generation) {
+    return null;
+  }
+
+  return buildAIGenerationHistoryItem({
+    supabaseAdmin: options.supabaseAdmin,
+    row: options.generation,
+  });
+}
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
@@ -60,7 +74,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     if (isAIGenerationTerminal(generation.status)) {
       return NextResponse.json({
         success: true,
-        data: toAIGenerationHistoryItem(generation),
+        data: await serializeGeneration({
+          supabaseAdmin,
+          generation,
+        }),
       });
     }
 
@@ -79,7 +96,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
       return NextResponse.json({
         success: true,
-        data: toAIGenerationHistoryItem(generation),
+        data: await serializeGeneration({
+          supabaseAdmin,
+          generation,
+        }),
       });
     }
 
@@ -102,7 +122,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
       return NextResponse.json({
         success: true,
-        data: toAIGenerationHistoryItem(generation),
+        data: await serializeGeneration({
+          supabaseAdmin,
+          generation,
+        }),
       });
     }
 
@@ -124,7 +147,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
       return NextResponse.json({
         success: true,
-        data: toAIGenerationHistoryItem(generation),
+        data: await serializeGeneration({
+          supabaseAdmin,
+          generation,
+        }),
       });
     }
 
@@ -156,7 +182,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
       return NextResponse.json({
         success: true,
-        data: toAIGenerationHistoryItem(generation),
+        data: await serializeGeneration({
+          supabaseAdmin,
+          generation,
+        }),
       });
     }
 
@@ -182,7 +211,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({
       success: true,
-      data: toAIGenerationHistoryItem(generation),
+      data: await serializeGeneration({
+        supabaseAdmin,
+        generation,
+      }),
     });
   } catch (error) {
     return NextResponse.json(

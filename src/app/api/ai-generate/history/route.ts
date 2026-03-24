@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
-import { toAIGenerationHistoryItem } from "@/lib/bead/aiGeneration";
-import { getLatestGenerations } from "@/lib/bead/aiGenerationServer";
+import {
+  buildAIGenerationHistoryItem,
+  getLatestGenerations,
+} from "@/lib/bead/aiGenerationServer";
 
 export const runtime = "nodejs";
+const HISTORY_ETAG_VERSION = "v2-image-variants";
 
 function buildHistoryETag(
   generations: Array<{
@@ -23,7 +26,9 @@ function buildHistoryETag(
     )
     .join("|");
 
-  return `"${Buffer.from(seed || "empty").toString("base64url")}"`;
+  return `"${Buffer.from(`${HISTORY_ETAG_VERSION}:${seed || "empty"}`).toString(
+    "base64url"
+  )}"`;
 }
 
 export async function GET(request: NextRequest) {
@@ -46,6 +51,14 @@ export async function GET(request: NextRequest) {
       userId: user.id,
       limit: 10,
     });
+    const items = await Promise.all(
+      generations.map((generation) =>
+        buildAIGenerationHistoryItem({
+          supabaseAdmin,
+          row: generation,
+        })
+      )
+    );
     const etag = buildHistoryETag(generations);
 
     if (request.headers.get("if-none-match") === etag) {
@@ -61,7 +74,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        data: generations.map(toAIGenerationHistoryItem),
+        data: items,
       },
       {
         headers: {

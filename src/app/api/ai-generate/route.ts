@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
 import {
-  toAIGenerationHistoryItem,
+  type AIGenerationHistoryItem,
 } from "@/lib/bead/aiGeneration";
 import {
+  buildAIGenerationHistoryItem,
   buildSourceImagePath,
   createDashScopeAsyncTask,
   createSignedStorageUrl,
@@ -14,12 +15,27 @@ import {
   insertGeneration,
   pruneOldGenerations,
   updateGeneration,
+  uploadGenerationImageVariants,
   uploadStorageObject,
 } from "@/lib/bead/aiGenerationServer";
 
 export const runtime = "nodejs";
 
-function conflictResponse(message: string, item?: ReturnType<typeof toAIGenerationHistoryItem>) {
+async function serializeGeneration(options: {
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
+  generation: Awaited<ReturnType<typeof getActiveGeneration>>;
+}): Promise<AIGenerationHistoryItem | null> {
+  if (!options.generation) {
+    return null;
+  }
+
+  return buildAIGenerationHistoryItem({
+    supabaseAdmin: options.supabaseAdmin,
+    row: options.generation,
+  });
+}
+
+function conflictResponse(message: string, item?: AIGenerationHistoryItem | null) {
   return NextResponse.json(
     {
       success: false,
@@ -56,9 +72,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (activeGeneration) {
+      const activeItem = await serializeGeneration({
+        supabaseAdmin,
+        generation: activeGeneration,
+      });
+
       return conflictResponse(
         "You already have an AI generation in progress.",
-        toAIGenerationHistoryItem(activeGeneration)
+        activeItem
       );
     }
 
@@ -100,12 +121,26 @@ export async function POST(request: NextRequest) {
     });
 
     try {
+      const sourceBuffer = new Uint8Array(await image.arrayBuffer());
+
       await uploadStorageObject({
         supabaseAdmin,
         path: sourceImagePath,
-        body: image,
+        body: sourceBuffer,
         contentType: image.type || "image/png",
       });
+
+      try {
+        await uploadGenerationImageVariants({
+          supabaseAdmin,
+          userId,
+          generationId,
+          kind: "source",
+          sourceBuffer,
+        });
+      } catch {
+        // Variant uploads are best-effort and should not fail the main task.
+      }
 
       const sourceImageUrl = await createSignedStorageUrl({
         supabaseAdmin,
@@ -148,7 +183,10 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: generation.error_message,
-          data: toAIGenerationHistoryItem(generation),
+          data: await serializeGeneration({
+            supabaseAdmin,
+            generation,
+          }),
         },
         { status: 500 }
       );
@@ -161,7 +199,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: toAIGenerationHistoryItem(generation),
+      data: await serializeGeneration({
+        supabaseAdmin,
+        generation,
+      }),
     });
   } catch (error) {
     if (error instanceof Error) {
