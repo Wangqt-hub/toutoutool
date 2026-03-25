@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useBeadWorkspaceLaunch } from "@/components/bead-tool/useBeadWorkspaceLaunch";
 import { BeadImagePreviewCard } from "@/components/bead-tool/BeadImagePreviewCard";
 import {
   BeadWorkflowShell,
@@ -43,6 +44,7 @@ import {
   type PixelAlgorithm,
 } from "@/lib/bead/imageProcessor";
 import { PIXEL_STYLES } from "@/lib/bead/pixelStyles";
+import { createWorkspaceName } from "@/lib/bead/workspaces";
 
 function clampSize(value: number): number {
   return Math.max(8, Math.min(128, Math.round(value)));
@@ -224,6 +226,10 @@ export default function AIGeneratePage() {
   const [error, setError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [aiSubmitting, setAiSubmitting] = useState(false);
+  const { launchWorkspace, launching, workspaceLaunchDialog } =
+    useBeadWorkspaceLaunch({
+      onError: setError,
+    });
 
   const [selectedStyle, setSelectedStyle] = useState("anime");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -739,17 +745,21 @@ export default function AIGeneratePage() {
       return;
     }
 
-    sessionStorage.setItem(
-      "currentBeadPattern",
-      JSON.stringify({
+    void launchWorkspace({
+      name: createWorkspaceName(
+        "ai",
+        selectedCompletedHistory
+          ? `${selectedCompletedHistory.styleName} 图纸`
+          : "AI 图纸"
+      ),
+      sourceType: "ai",
+      brand,
+      patternData: {
         grid,
         palette,
-        brand,
-      })
-    );
-
-    router.push("/tools/bead/bead-mode");
-  }, [brand, grid, palette, router]);
+      },
+    });
+  }, [brand, grid, launchWorkspace, palette, selectedCompletedHistory]);
 
   const steps = useMemo<BeadWorkflowStep[]>(
     () => [
@@ -821,10 +831,10 @@ export default function AIGeneratePage() {
               size="lg"
               className="w-full bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600"
               onClick={handleEnterBeadMode}
-              disabled={!grid || !palette}
+              disabled={!grid || !palette || launching}
             >
               <Grid3X3 className="mr-2 h-4 w-4" />
-              进入拼豆模式
+              {launching ? "进入工作台中..." : "进入拼豆模式"}
             </Button>
           }
         />
@@ -1100,27 +1110,28 @@ export default function AIGeneratePage() {
   );
 
   return (
-    <BeadWorkflowShell
-      title="AI 生成像素画"
-      icon={Sparkles}
-      accent="rose"
-      steps={steps}
-      currentStep={currentStep}
-      onStepChange={(stepIndex) => {
-        if (steps[stepIndex]?.available !== false) {
-          setCurrentStep(stepIndex);
-        }
-      }}
-      onBack={() => router.push("/tools/bead")}
-      stageEyebrow={stageCopy.eyebrow}
-      stageTitle={stageCopy.title}
-      error={error}
-      preview={preview}
-      mobilePreviewPlacement={currentStep === 2 ? "before" : "after"}
-      footer={footer}
-      floatingSlot={historyPanel}
-    >
-      {currentStep === 0 ? (
+    <>
+      <BeadWorkflowShell
+        title="AI 生成像素画"
+        icon={Sparkles}
+        accent="rose"
+        steps={steps}
+        currentStep={currentStep}
+        onStepChange={(stepIndex) => {
+          if (steps[stepIndex]?.available !== false) {
+            setCurrentStep(stepIndex);
+          }
+        }}
+        onBack={() => router.push("/tools/bead")}
+        stageEyebrow={stageCopy.eyebrow}
+        stageTitle={stageCopy.title}
+        error={error}
+        preview={preview}
+        mobilePreviewPlacement={currentStep === 2 ? "before" : "after"}
+        footer={footer}
+        floatingSlot={historyPanel}
+      >
+        {currentStep === 0 ? (
         <ImageUploadStep
           previewUrl={sourcePreviewUrl}
           previewLabel={sourcePreviewLabel}
@@ -1283,8 +1294,10 @@ export default function AIGeneratePage() {
             </Card>
           </div>
         </div>
-      )}
-    </BeadWorkflowShell>
+        )}
+      </BeadWorkflowShell>
+      {workspaceLaunchDialog}
+    </>
   );
 }
 

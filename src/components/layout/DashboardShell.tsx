@@ -2,16 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 import { LogoutButton } from "@/components/ui/logout-button";
 import { MembershipPreviewButton } from "@/components/ui/membership-preview";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState(76);
+  const isFullscreenWorkspace = pathname?.startsWith("/tools/bead/bead-mode");
 
   useEffect(() => {
     if (!open) {
@@ -25,6 +27,23 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!isFullscreenWorkspace) {
+      return;
+    }
+
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [isFullscreenWorkspace]);
 
   useEffect(() => {
     const value = open ? "true" : "false";
@@ -80,7 +99,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.94),rgba(255,247,237,0.92)_36%,rgba(255,251,235,0.88)_100%)]">
+    <div
+      className={`bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.94),rgba(255,247,237,0.92)_36%,rgba(255,251,235,0.88)_100%)] ${
+        isFullscreenWorkspace ? "h-[100dvh] overflow-hidden" : "min-h-screen"
+      }`}
+    >
       <header
         ref={headerRef}
         data-dashboard-header="true"
@@ -217,10 +240,26 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <main
-        className="mx-auto max-w-[1680px] px-2.5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-5 lg:px-8 lg:py-7"
-        style={{ paddingTop: `${headerHeight + 16}px` }}
+        className={
+          isFullscreenWorkspace
+            ? "h-[calc(100dvh-var(--dashboard-header-height,76px))] overflow-hidden"
+            : "mx-auto max-w-[1680px] px-2.5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-5 lg:px-8 lg:py-7"
+        }
+        style={
+          isFullscreenWorkspace
+            ? {
+                marginTop: `${headerHeight}px`,
+              }
+            : {
+                paddingTop: `${headerHeight + 16}px`,
+              }
+        }
       >
-        {children}
+        {isFullscreenWorkspace ? (
+          <div className="h-full overflow-hidden">{children}</div>
+        ) : (
+          children
+        )}
       </main>
     </div>
   );

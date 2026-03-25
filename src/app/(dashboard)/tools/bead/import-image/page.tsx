@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Image as ImageIcon } from "lucide-react";
+import { useBeadWorkspaceLaunch } from "@/components/bead-tool/useBeadWorkspaceLaunch";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -21,6 +22,7 @@ import {
   type PaletteColor,
 } from "@/lib/bead/palette";
 import type { BeadGrid } from "@/lib/bead/types";
+import { createWorkspaceName } from "@/lib/bead/workspaces";
 import {
   calculateAspectRatioDimensionsFromWidth,
   processImage,
@@ -32,12 +34,17 @@ function clampSize(value: number): number {
   return Math.max(8, Math.min(128, Math.round(value)));
 }
 
+function stripFileExtension(value: string): string {
+  return value.replace(/\.[^.]+$/, "");
+}
+
 export default function ImageImportPage() {
   const router = useRouter();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageMetadata, setImageMetadata] = useState<ImageMetadata | null>(null);
+  const [imageName, setImageName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [canvasWidth, setCanvasWidth] = useState<number>(32);
@@ -52,6 +59,10 @@ export default function ImageImportPage() {
   const [palette, setPalette] = useState<PaletteColor[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [showColorNumbers, setShowColorNumbers] = useState(true);
+  const { launchWorkspace, launching, workspaceLaunchDialog } =
+    useBeadWorkspaceLaunch({
+      onError: setError,
+    });
 
   const syncAspectRatioSize = (
     nextWidth: number,
@@ -100,7 +111,7 @@ export default function ImageImportPage() {
       setError(
         generationError instanceof Error
           ? generationError.message
-          : "生成图纸时出错，请稍后再试。"
+          : "生成图纸时出现错误，请稍后再试。"
       );
     } finally {
       setLoading(false);
@@ -112,16 +123,15 @@ export default function ImageImportPage() {
       return;
     }
 
-    sessionStorage.setItem(
-      "currentBeadPattern",
-      JSON.stringify({
+    void launchWorkspace({
+      name: createWorkspaceName("image", imageName || "图片图纸"),
+      sourceType: "image",
+      brand,
+      patternData: {
         grid,
         palette,
-        brand,
-      })
-    );
-
-    router.push("/tools/bead/bead-mode");
+      },
+    });
   };
 
   const steps = useMemo<BeadWorkflowStep[]>(
@@ -219,137 +229,143 @@ export default function ImageImportPage() {
           type="button"
           size="lg"
           onClick={handleEnterBeadMode}
-          disabled={!grid || !palette}
+          disabled={!grid || !palette || launching}
         >
-          进入拼豆模式
+          {launching ? "进入工作台中..." : "进入拼豆模式"}
         </Button>
       </div>
     );
 
   return (
-    <BeadWorkflowShell
-      title="图片转图纸"
-      icon={ImageIcon}
-      accent="sky"
-      steps={steps}
-      currentStep={currentStep}
-      onStepChange={(stepIndex) => {
-        if (steps[stepIndex]?.available !== false) {
-          setCurrentStep(stepIndex);
-        }
-      }}
-      onBack={() => router.push("/tools/bead")}
-      stageEyebrow={stageCopy.eyebrow}
-      stageTitle={stageCopy.title}
-      error={error}
-      preview={preview}
-      footer={footer}
-    >
-      {currentStep === 0 ? (
-        <ImageUploadStep
-          previewUrl={imageUrl}
-          previewLabel={imageUrl ? "当前图片" : null}
-          onImageSelect={(url, _file, metadata) => {
-            setImageUrl(url);
-            setImageMetadata(metadata);
-            setGrid(null);
-            setPalette(null);
-            setError(null);
-            setCurrentStep(1);
+    <>
+      <BeadWorkflowShell
+        title="图片转图纸"
+        icon={ImageIcon}
+        accent="sky"
+        steps={steps}
+        currentStep={currentStep}
+        onStepChange={(stepIndex) => {
+          if (steps[stepIndex]?.available !== false) {
+            setCurrentStep(stepIndex);
+          }
+        }}
+        onBack={() => router.push("/tools/bead")}
+        stageEyebrow={stageCopy.eyebrow}
+        stageTitle={stageCopy.title}
+        error={error}
+        preview={preview}
+        footer={footer}
+      >
+        {currentStep === 0 ? (
+          <ImageUploadStep
+            previewUrl={imageUrl}
+            previewLabel={imageUrl ? "当前图片" : null}
+            onImageSelect={(url, file, metadata) => {
+              setImageUrl(url);
+              setImageMetadata(metadata);
+              setImageName(stripFileExtension(file.name));
+              setGrid(null);
+              setPalette(null);
+              setError(null);
+              setCurrentStep(1);
 
-            if (maintainAspectRatio) {
-              syncAspectRatioSize(canvasWidth, metadata);
-            }
-          }}
-          onClear={() => {
-            setImageUrl(null);
-            setImageMetadata(null);
-            setGrid(null);
-            setPalette(null);
-            setError(null);
-            setCurrentStep(0);
-          }}
-          onError={setError}
-        />
-      ) : currentStep === 1 ? (
-        <div className="space-y-4">
-          <PatternSettings
-            canvasWidth={canvasWidth}
-            canvasHeight={canvasHeight}
-            maintainAspectRatio={maintainAspectRatio}
-            onCanvasWidthChange={(nextWidth) => {
               if (maintainAspectRatio) {
-                syncAspectRatioSize(nextWidth);
-                return;
-              }
-
-              setCanvasWidth(clampSize(nextWidth));
-            }}
-            onCanvasHeightChange={(nextHeight) => {
-              setCanvasHeight(clampSize(nextHeight));
-            }}
-            onMaintainAspectRatioChange={(nextMaintainAspectRatio) => {
-              setMaintainAspectRatio(nextMaintainAspectRatio);
-
-              if (nextMaintainAspectRatio) {
-                syncAspectRatioSize(canvasWidth);
+                syncAspectRatioSize(canvasWidth, metadata);
               }
             }}
-            colorCount={colorCount}
-            brand={brand}
-            onColorCountChange={setColorCount}
-            onBrandChange={setBrand}
-            algorithm={algorithm}
-            onAlgorithmChange={setAlgorithm}
+            onClear={() => {
+              setImageUrl(null);
+              setImageMetadata(null);
+              setImageName(null);
+              setGrid(null);
+              setPalette(null);
+              setError(null);
+              setCurrentStep(0);
+            }}
+            onError={setError}
           />
+        ) : currentStep === 1 ? (
+          <div className="space-y-4">
+            <PatternSettings
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              maintainAspectRatio={maintainAspectRatio}
+              onCanvasWidthChange={(nextWidth) => {
+                if (maintainAspectRatio) {
+                  syncAspectRatioSize(nextWidth);
+                  return;
+                }
 
-          <Card className="border-white/70 bg-cream-50/75">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-white px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  当前尺寸
-                </p>
-                <p className="mt-2 text-xl font-semibold text-slate-900">
-                  {canvasWidth} × {canvasHeight}
-                </p>
+                setCanvasWidth(clampSize(nextWidth));
+              }}
+              onCanvasHeightChange={(nextHeight) => {
+                setCanvasHeight(clampSize(nextHeight));
+              }}
+              onMaintainAspectRatioChange={(nextMaintainAspectRatio) => {
+                setMaintainAspectRatio(nextMaintainAspectRatio);
+
+                if (nextMaintainAspectRatio) {
+                  syncAspectRatioSize(canvasWidth);
+                }
+              }}
+              colorCount={colorCount}
+              brand={brand}
+              onColorCountChange={setColorCount}
+              onBrandChange={setBrand}
+              algorithm={algorithm}
+              onAlgorithmChange={setAlgorithm}
+            />
+
+            <Card className="border-white/70 bg-cream-50/75">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-white px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    当前尺寸
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900">
+                    {canvasWidth} × {canvasHeight}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    当前色卡
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900">
+                    {brand} / {colorCount} 色
+                  </p>
+                </div>
               </div>
-              <div className="rounded-2xl bg-white px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  当前色卡
-                </p>
-                <p className="mt-2 text-xl font-semibold text-slate-900">
-                  {brand} / {colorCount} 色
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Card className="bg-cream-50/75">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-              网格
-            </p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">
-              {grid?.[0]?.length ?? 0} × {grid?.length ?? 0}
-            </p>
-          </Card>
-          <Card className="bg-cream-50/75">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-              色数
-            </p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">
-              {palette?.length ?? 0} 种
-            </p>
-          </Card>
-          <Card className="bg-cream-50/75">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-              品牌
-            </p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">{brand}</p>
-          </Card>
-        </div>
-      )}
-    </BeadWorkflowShell>
+            </Card>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                网格
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {grid?.[0]?.length ?? 0} × {grid?.length ?? 0}
+              </p>
+            </Card>
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                色数
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {palette?.length ?? 0} 种
+              </p>
+            </Card>
+            <Card className="bg-cream-50/75">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                品牌
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">{brand}</p>
+            </Card>
+          </div>
+        )}
+      </BeadWorkflowShell>
+
+      {workspaceLaunchDialog}
+    </>
   );
 }
