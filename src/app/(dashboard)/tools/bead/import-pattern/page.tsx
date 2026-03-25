@@ -9,6 +9,7 @@ import {
   BeadWorkflowShell,
   type BeadWorkflowStep,
 } from "@/components/bead-tool/BeadWorkflowShell";
+import { useBeadWorkspaceLaunch } from "@/components/bead-tool/useBeadWorkspaceLaunch";
 import { ImageUploadStep } from "@/components/bead-tool/ImageUploadStep";
 import { PatternCorrectionDialog } from "@/components/bead-tool/PatternCorrectionDialog";
 import { PatternCropper } from "@/components/bead-tool/PatternCropper";
@@ -30,6 +31,7 @@ import {
   type ColorBrand,
   type PaletteColor,
 } from "@/lib/bead/palette";
+import { createWorkspaceName } from "@/lib/bead/workspaces";
 
 function clampGridSize(value: number): number {
   return Math.max(1, Math.min(256, Math.round(value)));
@@ -62,6 +64,10 @@ export default function PatternImportPage() {
   const [cropping, setCropping] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
   const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
+  const { launchWorkspace, launching, workspaceLaunchDialog } =
+    useBeadWorkspaceLaunch({
+      onError: setError,
+    });
 
   const resetRecognition = () => {
     setCells(null);
@@ -237,16 +243,15 @@ export default function PatternImportPage() {
       return;
     }
 
-    sessionStorage.setItem(
-      "currentBeadPattern",
-      JSON.stringify({
+    void launchWorkspace({
+      name: createWorkspaceName("pattern"),
+      sourceType: "pattern",
+      brand,
+      patternData: {
         grid: toBeadGrid(cells),
         palette,
-        brand,
-      })
-    );
-
-    router.push("/tools/bead/bead-mode");
+      },
+    });
   };
 
   const steps = useMemo<BeadWorkflowStep[]>(
@@ -381,7 +386,7 @@ export default function PatternImportPage() {
           type="button"
           size="lg"
           onClick={handleEnterBeadMode}
-          disabled={!cells || !palette || unresolvedCount > 0}
+          disabled={!cells || !palette || unresolvedCount > 0 || launching}
         >
           进入拼豆模式
         </Button>
@@ -579,6 +584,7 @@ export default function PatternImportPage() {
         onApplyCode={handleApplyCode}
         onMarkEmpty={handleMarkEmpty}
       />
+      {workspaceLaunchDialog}
     </>
   );
 }
