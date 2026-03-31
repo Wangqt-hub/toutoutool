@@ -988,7 +988,7 @@ export default function BeadModePage() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_top,#fff8ee,transparent_52%),linear-gradient(180deg,#f8f3ee,#f4eee7)]">
-      <header className="z-40 shrink-0 border-b border-white/70 bg-white/88 backdrop-blur-xl">
+      <header className="z-10 shrink-0 border-b border-white/70 bg-white/88 backdrop-blur-xl">
         <div className="flex h-[3.15rem] items-center gap-1.5 px-2 sm:hidden">
           <Button
             type="button"

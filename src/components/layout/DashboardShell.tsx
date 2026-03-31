@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
@@ -14,6 +14,29 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const headerRef = useRef<HTMLElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState(76);
   const isFullscreenWorkspace = pathname?.startsWith("/tools/bead/bead-mode");
+  const MIN_HEADER_HEIGHT = 64;
+
+  const updateHeaderHeight = useCallback(() => {
+    const element = headerRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    const measuredHeight = Math.ceil(element.getBoundingClientRect().height);
+    const nextHeight =
+      measuredHeight >= MIN_HEADER_HEIGHT
+        ? measuredHeight
+        : Math.max(headerHeight, MIN_HEADER_HEIGHT);
+
+    document.documentElement.style.setProperty(
+      "--dashboard-header-height",
+      `${nextHeight}px`
+    );
+    setHeaderHeight((previous) =>
+      previous === nextHeight ? previous : nextHeight
+    );
+  }, [headerHeight]);
 
   useEffect(() => {
     if (!open) {
@@ -56,6 +79,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     };
   }, [open]);
 
+  useLayoutEffect(() => {
+    updateHeaderHeight();
+    const rafId = window.requestAnimationFrame(updateHeaderHeight);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [pathname, updateHeaderHeight]);
+
   useEffect(() => {
     const element = headerRef.current;
 
@@ -63,35 +95,22 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const updateHeight = () => {
-      const nextHeight = Math.ceil(element.getBoundingClientRect().height);
-      document.documentElement.style.setProperty(
-        "--dashboard-header-height",
-        `${nextHeight}px`
-      );
-      setHeaderHeight((previous) =>
-        previous === nextHeight ? previous : nextHeight
-      );
-    };
-
-    updateHeight();
-
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateHeight);
+      window.addEventListener("resize", updateHeaderHeight);
 
       return () => {
-        window.removeEventListener("resize", updateHeight);
+        window.removeEventListener("resize", updateHeaderHeight);
       };
     }
 
-    const observer = new ResizeObserver(updateHeight);
+    const observer = new ResizeObserver(updateHeaderHeight);
     observer.observe(element);
 
     return () => {
       document.documentElement.style.removeProperty("--dashboard-header-height");
       observer.disconnect();
     };
-  }, []);
+  }, [updateHeaderHeight]);
 
   useEffect(() => {
     const routes = ["/tools", "/tools/bead", "/tools/travel", "/tools/ideas"];
@@ -107,7 +126,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <header
         ref={headerRef}
         data-dashboard-header="true"
-        className="fixed left-0 right-0 top-0 z-40 border-b border-slate-200 bg-white"
+        className="fixed left-0 right-0 top-0 z-50 border-b border-slate-200 bg-white"
       >
         <div className="mx-auto flex max-w-[1680px] items-center justify-between px-2.5 py-3 sm:px-4 lg:px-8">
           <Link href="/tools" className="flex items-center gap-2">
