@@ -7,7 +7,7 @@ import {
 import {
   buildAIGenerationHistoryItem,
   buildSourceImagePath,
-  createDashScopeAsyncTask,
+  createDashScopeSyncImageEdit,
   createSignedStorageUrl,
   getActiveGeneration,
   getProgressForStatus,
@@ -15,6 +15,7 @@ import {
   insertGeneration,
   pruneOldGenerations,
   updateGeneration,
+  uploadAIResultFromUrl,
   uploadGenerationImageVariants,
   uploadStorageObject,
 } from "@/lib/bead/aiGenerationServer";
@@ -147,7 +148,19 @@ export async function POST(request: NextRequest) {
         path: sourceImagePath,
       });
 
-      const task = await createDashScopeAsyncTask({
+      generation = await updateGeneration({
+        supabaseAdmin,
+        generationId,
+        userId,
+        updates: {
+          status: "RUNNING",
+          progress_percent: getProgressForStatus("RUNNING"),
+          dashscope_task_id: null,
+          error_message: null,
+        },
+      });
+
+      const resultImageUrl = await createDashScopeSyncImageEdit({
         imageInput: sourceImageUrl,
         prompt,
       });
@@ -157,10 +170,31 @@ export async function POST(request: NextRequest) {
         generationId,
         userId,
         updates: {
-          status: task.status,
-          progress_percent: getProgressForStatus(task.status),
-          dashscope_task_id: task.taskId,
+          status: "SAVING_RESULT",
+          progress_percent: getProgressForStatus("SAVING_RESULT"),
+          dashscope_task_id: null,
           error_message: null,
+        },
+      });
+
+      const aiImagePath = await uploadAIResultFromUrl({
+        supabaseAdmin,
+        imageUrl: resultImageUrl,
+        userId,
+        generationId,
+      });
+
+      generation = await updateGeneration({
+        supabaseAdmin,
+        generationId,
+        userId,
+        updates: {
+          status: "SUCCEEDED",
+          progress_percent: getProgressForStatus("SUCCEEDED"),
+          ai_image_path: aiImagePath,
+          dashscope_task_id: null,
+          error_message: null,
+          completed_at: new Date().toISOString(),
         },
       });
     } catch (error) {

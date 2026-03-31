@@ -82,18 +82,6 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     if (!generation.dashscope_task_id) {
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId: user.id,
-        updates: {
-          status: "FAILED",
-          progress_percent: getProgressForStatus("FAILED"),
-          error_message: "Missing DashScope task id.",
-          completed_at: new Date().toISOString(),
-        },
-      });
-
       return NextResponse.json({
         success: true,
         data: await serializeGeneration({

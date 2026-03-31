@@ -14,9 +14,12 @@ import {
 } from "@/lib/bead/aiGeneration";
 
 const DASHSCOPE_ASYNC_GENERATE_URL =
-  "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation";
+  "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis";
+const DASHSCOPE_MULTIMODAL_GENERATE_URL =
+  "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 const DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks";
-const DASHSCOPE_MODEL = "wan2.6-image";
+const DASHSCOPE_ASYNC_MODEL = "wanx2.1-imageedit";
+const DASHSCOPE_SYNC_MODEL = "qwen-image-2.0";
 const HISTORY_IMAGE_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 const HISTORY_PREVIEW_MAX_EDGE = 1200;
 const HISTORY_THUMBNAIL_EDGE = 160;
@@ -29,6 +32,11 @@ type DashScopeTaskResponse = {
   output?: {
     task_id?: string;
     task_status?: string;
+    results?: Array<{
+      url?: string;
+      code?: string;
+      message?: string;
+    }>;
     choices?: Array<{
       message?: {
         content?: Array<{
@@ -238,22 +246,13 @@ export async function createDashScopeAsyncTask(options: {
       "X-DashScope-Async": "enable",
     },
     body: JSON.stringify({
-      model: DASHSCOPE_MODEL,
+      model: DASHSCOPE_ASYNC_MODEL,
       input: {
-        messages: [
-          {
-            role: "user",
-            content: [
-              { text: options.prompt },
-              { image: options.imageInput },
-            ],
-          },
-        ],
+        function: "description_edit",
+        prompt: options.prompt,
+        base_image_url: options.imageInput,
       },
       parameters: {
-        size: "1K",
-        watermark: false,
-        prompt_extend: true,
         n: 1,
       },
     }),
@@ -277,6 +276,57 @@ export async function createDashScopeAsyncTask(options: {
     taskId,
     status: mapDashScopeTaskStatus(payload.output?.task_status || "PENDING"),
   };
+}
+
+export async function createDashScopeSyncImageEdit(options: {
+  imageInput: string;
+  prompt: string;
+}): Promise<string> {
+  const response = await fetch(DASHSCOPE_MULTIMODAL_GENERATE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getDashScopeApiKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: DASHSCOPE_SYNC_MODEL,
+      input: {
+        messages: [
+          {
+            role: "user",
+            content: [
+              { image: options.imageInput },
+              { text: options.prompt },
+            ],
+          },
+        ],
+      },
+      parameters: {
+        size: "1328*1328",
+        watermark: false,
+        prompt_extend: true,
+        n: 1,
+        negative_prompt: " ",
+      },
+    }),
+    cache: "no-store",
+  });
+
+  const payload = await readDashScopeResponse(response);
+
+  if (!response.ok) {
+    throw new Error(
+      getDashScopeErrorMessage(payload, "Failed to generate image with DashScope.")
+    );
+  }
+
+  const imageUrl = getDashScopeResultImageUrl(payload);
+
+  if (!imageUrl) {
+    throw new Error("DashScope did not return an image url.");
+  }
+
+  return imageUrl;
 }
 
 export async function fetchDashScopeTask(
@@ -304,9 +354,15 @@ export async function fetchDashScopeTask(
 export function getDashScopeResultImageUrl(
   payload: DashScopeTaskResponse
 ): string | null {
+  const resultUrl = payload.output?.results?.find((item) => Boolean(item.url))?.url;
+
+  if (resultUrl) {
+    return resultUrl;
+  }
+
   const firstChoice = payload.output?.choices?.[0];
   const firstImage = firstChoice?.message?.content?.find(
-    (item) => item.type === "image" && Boolean(item.image)
+    (item) => Boolean(item.image)
   );
 
   return firstImage?.image || null;

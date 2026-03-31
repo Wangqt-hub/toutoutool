@@ -137,6 +137,51 @@ async function readJsonResponse(response: Response) {
   return payload;
 }
 
+function getSmoothedGenerationProgress(
+  item: AIGenerationHistoryItem,
+  now: number
+): number {
+  if (!isAIGenerationActive(item.status)) {
+    return item.progressPercent;
+  }
+
+  const createdAt = Number.isNaN(Date.parse(item.createdAt))
+    ? now
+    : Date.parse(item.createdAt);
+  const updatedAt = Number.isNaN(Date.parse(item.updatedAt))
+    ? createdAt
+    : Date.parse(item.updatedAt);
+  const actualProgress = Math.max(0, Math.min(100, item.progressPercent));
+
+  if (item.id.startsWith("optimistic-")) {
+    const elapsed = Math.max(0, now - createdAt);
+    const eased =
+      actualProgress + (88 - actualProgress) * (1 - Math.exp(-elapsed / 12000));
+
+    return Math.max(actualProgress, Math.min(88, Math.round(eased)));
+  }
+
+  const stageConfig =
+    item.status === "UPLOADING_SOURCE"
+      ? { target: 24, anchor: createdAt, duration: 2500 }
+      : item.status === "PENDING"
+      ? { target: 58, anchor: updatedAt, duration: 9000 }
+      : item.status === "RUNNING"
+      ? { target: 86, anchor: updatedAt, duration: 22000 }
+      : { target: 96, anchor: updatedAt, duration: 6000 };
+
+  const elapsed = Math.max(0, now - stageConfig.anchor);
+  const eased =
+    actualProgress +
+    (stageConfig.target - actualProgress) *
+      (1 - Math.exp(-elapsed / stageConfig.duration));
+
+  return Math.max(
+    actualProgress,
+    Math.min(stageConfig.target, Math.round(eased))
+  );
+}
+
 const HISTORY_CACHE_KEY = "bead-ai-history-cache-v1";
 
 type CachedHistoryPayload = {
@@ -241,6 +286,7 @@ export default function AIGeneratePage() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
     null
   );
+  const [progressNow, setProgressNow] = useState(() => Date.now());
 
   const [canvasWidth, setCanvasWidth] = useState<number>(32);
   const [canvasHeight, setCanvasHeight] = useState<number>(32);
@@ -285,6 +331,28 @@ export default function AIGeneratePage() {
   const restoreRequestIdRef = useRef(0);
   const pollInFlightRef = useRef(false);
   const pollFailureCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!currentTaskItem || !isAIGenerationActive(currentTaskItem.status)) {
+      return;
+    }
+
+    setProgressNow(Date.now());
+
+    const timer = window.setInterval(() => {
+      setProgressNow(Date.now());
+    }, 400);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [currentTaskItem]);
+
+  const getDisplayedProgress = useCallback(
+    (item: AIGenerationHistoryItem | null | undefined) =>
+      item ? getSmoothedGenerationProgress(item, progressNow) : 0,
+    [progressNow]
+  );
 
   useEffect(() => {
     hasWorkingSelectionRef.current = Boolean(
@@ -653,7 +721,7 @@ export default function AIGeneratePage() {
 
       setHistoryItems((items) => mergeHistoryItems(items, item));
       setSelectedHistoryId(item.id);
-      setActiveHistoryId(item.id);
+      setActiveHistoryId(isAIGenerationActive(item.status) ? item.id : null);
       await restoreHistorySelection(item, "当前任务原图");
     } catch (generationError) {
       setOptimisticItem(null);
@@ -1048,7 +1116,11 @@ export default function AIGeneratePage() {
                                   {formatDateTime(item.createdAt)}
                                 </p>
                               </div>
-                              {!clickable ? (
+                              {item.status === "FAILED" ? (
+                                <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-500">
+                                  失败
+                                </span>
+                              ) : isAIGenerationActive(item.status) ? (
                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
                                   进行中
                                 </span>
@@ -1062,10 +1134,10 @@ export default function AIGeneratePage() {
                             <div className="space-y-1">
                               <div className="flex items-center justify-between text-[11px] text-slate-500">
                                 <span>{item.statusLabel}</span>
-                                <span>{item.progressPercent}%</span>
+                                <span>{getDisplayedProgress(item)}%</span>
                               </div>
                               <ProgressBar
-                                progress={item.progressPercent}
+                                progress={getDisplayedProgress(item)}
                                 animated={item.status === "RUNNING"}
                                 tone={tone}
                               />
@@ -1095,7 +1167,7 @@ export default function AIGeneratePage() {
         >
           {currentTaskItem && isAIGenerationActive(currentTaskItem.status) ? (
             <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full border-2 border-white bg-white px-1 text-[10px] font-bold text-rose-600">
-              {currentTaskItem.progressPercent}%
+              {getDisplayedProgress(currentTaskItem)}%
             </span>
           ) : displayedHistoryItems.length > 0 ? (
             <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full border-2 border-white bg-white px-1 text-[10px] font-bold text-slate-700">
@@ -1194,19 +1266,21 @@ export default function AIGeneratePage() {
                     Progress
                   </p>
                   <p className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-                    {selectedHistory?.progressPercent ?? 0}%
+                    {getDisplayedProgress(selectedHistory || currentTaskItem)}%
                   </p>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <ProgressBar
-                  progress={selectedHistory?.progressPercent ?? 0}
-                  animated={selectedHistory?.status === "RUNNING"}
+                  progress={getDisplayedProgress(selectedHistory || currentTaskItem)}
+                  animated={
+                    (selectedHistory || currentTaskItem)?.status === "RUNNING"
+                  }
                   tone={
-                    selectedHistory?.status === "FAILED"
+                    (selectedHistory || currentTaskItem)?.status === "FAILED"
                       ? "red"
-                      : selectedHistory?.status === "SUCCEEDED"
+                      : (selectedHistory || currentTaskItem)?.status === "SUCCEEDED"
                       ? "emerald"
                       : "rose"
                   }
