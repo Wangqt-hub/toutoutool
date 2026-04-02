@@ -1,7 +1,4 @@
-"use client";
-
-import Image from "next/image";
-import { motion } from "framer-motion";
+﻿import Image from "next/image";
 
 type Variant = "hero" | "figure";
 
@@ -9,6 +6,8 @@ type Props = {
   /** 用途：hero 用于引导页等主视觉（可带装饰）；figure 用于导航/侧栏等，仅宝宝形象、透明背景 */
   variant?: Variant;
   size?: "xs" | "sm" | "md" | "lg";
+  priority?: boolean;
+  className?: string;
 };
 
 const sizeMap = {
@@ -23,23 +22,23 @@ const imagePaths = {
   figure: "/images/mascot/figure.webp",
 } as const;
 
-export function CapybaraHero({ variant = "figure", size = "md" }: Props) {
+export function CapybaraHero({
+  variant = "figure",
+  size = "md",
+  priority = false,
+  className = "",
+}: Props) {
   const { class: sizeClass, px } = sizeMap[size];
   const src = imagePaths[variant];
 
   return (
-    <motion.div
-      className={`relative ${sizeClass}`}
-      initial={{ y: 10, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 120 }}
-    >
+    <div className={`relative ${sizeClass} ${className}`.trim()}>
       {variant === "hero" && (
         <>
-          <div className="absolute -top-3 -right-3 h-6 w-6 rounded-full bg-blush shadow-sm flex items-center justify-center text-[10px]">
+          <div className="absolute -top-3 -right-3 flex h-6 w-6 items-center justify-center rounded-full bg-blush text-[10px] shadow-sm">
             ❤
           </div>
-          <div className="absolute -bottom-2 -left-3 h-6 w-6 rounded-full bg-accent-yellow shadow-sm flex items-center justify-center text-[10px]">
+          <div className="absolute -bottom-2 -left-3 flex h-6 w-6 items-center justify-center rounded-full bg-accent-yellow text-[10px] shadow-sm">
             🦆
           </div>
         </>
@@ -49,8 +48,9 @@ export function CapybaraHero({ variant = "figure", size = "md" }: Props) {
         alt="头头"
         fill
         sizes={`(max-width: 768px) ${Math.min(px, 96)}px, ${px}px`}
+        priority={priority}
         className="object-contain drop-shadow-md"
       />
-    </motion.div>
+    </div>
   );
 }

@@ -2,7 +2,6 @@
 
 import { useLayoutEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCloudBaseAuth } from "@/lib/cloudbase/client";
 
 function hasSessionHintCookie() {
   if (typeof document === "undefined") {
@@ -14,35 +13,60 @@ function hasSessionHintCookie() {
 
 export function LandingSessionRestore() {
   const router = useRouter();
-  const [restoring, setRestoring] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "checking" | "restoring">("idle");
 
   useLayoutEffect(() => {
+    let cancelled = false;
+
     try {
       if (!hasSessionHintCookie()) {
         return;
       }
 
-      const auth = getCloudBaseAuth();
+      setPhase("checking");
 
-      if (!auth.hasLoginState()) {
-        return;
-      }
+      void (async () => {
+        try {
+          const { getCloudBaseAuth } = await import("@/lib/cloudbase/client");
 
-      setRestoring(true);
-      router.replace("/auth/restore?to=%2Ftools");
+          if (cancelled) {
+            return;
+          }
+
+          const auth = getCloudBaseAuth();
+
+          if (!auth.hasLoginState()) {
+            setPhase("idle");
+            return;
+          }
+
+          setPhase("restoring");
+          router.replace("/auth/restore?to=%2Ftools");
+        } catch {
+          if (!cancelled) {
+            setPhase("idle");
+          }
+        }
+      })();
     } catch {
-      setRestoring(false);
+      setPhase("idle");
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  if (!restoring) {
+  if (phase === "idle") {
     return null;
   }
 
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-50 bg-cream-50"
+      className={`pointer-events-none fixed inset-0 z-50 bg-cream-50 transition-opacity duration-300 ${
+        phase === "checking" ? "opacity-0" : "opacity-100"
+      }`}
     >
       <span className="sr-only">正在恢复会话</span>
     </div>

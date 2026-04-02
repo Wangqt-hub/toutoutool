@@ -34,14 +34,11 @@ export default function LandingPage() {
           <div className="flex flex-1 flex-col items-start gap-6">
             <div className="inline-flex items-center gap-2 rounded-full bg-cream-100 px-3 py-1 text-xs text-accent-brown shadow-sm">
               <span>头头工具 · toutoutool</span>
-              <span className="rounded-full bg-blush px-2 py-0.5 text-[10px]">
-                轻量工具集合
-              </span>
             </div>
 
-            <h1 className="text-3xl font-extrabold leading-tight text-slate-900 md:text-4xl lg:text-5xl">
-              把脑袋里的小想法
-              <span className="text-accent-brown"> 变成顺手的小工具</span>
+            <h1 className="text-[2.75rem] font-extrabold leading-[1.08] tracking-tight text-slate-900 md:text-4xl lg:text-5xl">
+              <span className="block">把脑袋里的小想法</span>
+              <span className="block text-accent-brown">变成顺手的小工具</span>
             </h1>
 
             <p className="text-sm leading-relaxed text-slate-600 md:text-base">
@@ -60,7 +57,7 @@ export default function LandingPage() {
           </div>
 
           <div className="flex flex-1 flex-col items-center justify-center">
-            <CapybaraHero variant="hero" size="lg" />
+            <CapybaraHero variant="hero" size="lg" priority />
             <p className="mt-4 text-xs text-slate-500">
               今天也慢慢来，但每次都往前一点点。
             </p>
