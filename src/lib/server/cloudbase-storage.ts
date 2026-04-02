@@ -7,6 +7,16 @@ import {
 
 type StorageDownloadInfo = {
   downloadUrl?: string;
+  expiration?: string;
+  expire?: string;
+  expires?: string;
+  expired?: string;
+  tempUrlExpire?: string;
+};
+
+export type CloudBaseStorageDownloadEntry = {
+  downloadUrl: string;
+  expiresAt: string | null;
 };
 
 async function readJson(response: Response) {
@@ -25,6 +35,18 @@ async function readJson(response: Response) {
 
 function buildCloudObjectId(objectPath: string) {
   return `cloud://${getCloudBaseEnvId()}.${getCloudBaseStorageBucket()}/${objectPath}`;
+}
+
+function normalizeExpiry(info: StorageDownloadInfo): string | null {
+  const value =
+    info.tempUrlExpire ||
+    info.expiration ||
+    info.expire ||
+    info.expires ||
+    info.expired ||
+    null;
+
+  return value && String(value).trim() ? String(value).trim() : null;
 }
 
 async function requestStorage<T>(path: string, body: unknown): Promise<T[]> {
@@ -53,13 +75,45 @@ async function requestStorage<T>(path: string, body: unknown): Promise<T[]> {
   return Array.isArray(payload) ? (payload as T[]) : [];
 }
 
-export async function getCloudBaseStorageDownloadUrl(objectPath: string) {
-  const results = await requestStorage<StorageDownloadInfo>(
-    "get-objects-download-info",
-    [{ cloudObjectId: buildCloudObjectId(objectPath) }]
+export async function getCloudBaseStorageDownloadEntries(objectPaths: string[]) {
+  const validPaths = Array.from(
+    new Set(
+      objectPaths.filter(
+        (path): path is string => typeof path === "string" && path.trim().length > 0
+      )
+    )
   );
 
-  return results[0]?.downloadUrl || null;
+  if (validPaths.length === 0) {
+    return new Map<string, CloudBaseStorageDownloadEntry>();
+  }
+
+  const results = await requestStorage<StorageDownloadInfo>(
+    "get-objects-download-info",
+    validPaths.map((objectPath) => ({
+      cloudObjectId: buildCloudObjectId(objectPath),
+    }))
+  );
+
+  const entries = new Map<string, CloudBaseStorageDownloadEntry>();
+
+  results.forEach((item, index) => {
+    if (!item?.downloadUrl) {
+      return;
+    }
+
+    entries.set(validPaths[index], {
+      downloadUrl: item.downloadUrl,
+      expiresAt: normalizeExpiry(item),
+    });
+  });
+
+  return entries;
+}
+
+export async function getCloudBaseStorageDownloadUrl(objectPath: string) {
+  const results = await getCloudBaseStorageDownloadEntries([objectPath]);
+  return results.get(objectPath)?.downloadUrl || null;
 }
 
 export async function downloadCloudBaseObject(objectPath: string) {

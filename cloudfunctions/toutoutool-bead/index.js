@@ -474,14 +474,12 @@ async function deleteObjects(paths) {
   );
 }
 
-function buildThumbnailProxyUrl(workspaceId) {
-  return "/api/bead-workspaces/" + workspaceId + "/thumbnail";
-}
-
 async function attachThumbnailUrls(rows) {
+  const urlMap = await getDownloadUrls(rows.map((row) => row.thumbnail_path).filter(Boolean));
+
   return rows.map((row) => ({
     ...row,
-    thumbnail_url: row.thumbnail_path ? buildThumbnailProxyUrl(row.id) : null,
+    thumbnail_url: row.thumbnail_path ? urlMap.get(row.thumbnail_path) || null : null,
   }));
 }
 
@@ -580,7 +578,7 @@ async function handleCreateWorkspace(event) {
   const usedColorCodes = buildWorkspaceColorUsage(input.patternData, input.brand);
   const completedColorIndexes = normalizeCompletedColorIndexes(input.completedColorIndexes);
   const thumbnailPath = input.thumbnailDataUrl
-    ? `bead/workspaces/${event.userId}/${workspaceId}/thumbnail.png`
+    ? `bead/workspaces/${event.userId}/${workspaceId}/thumbnail.webp`
     : null;
 
   if (thumbnailPath) {

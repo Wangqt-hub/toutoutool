@@ -34,10 +34,6 @@ export type BeadWorkspaceOverviewPayload = {
 };
 
 function buildWorkspaceThumbnailUrl(row: BeadWorkspaceRow): string | null {
-  if (row.thumbnail_path) {
-    return `/api/bead-workspaces/${row.id}/thumbnail`;
-  }
-
   return row.thumbnail_url ?? null;
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Image, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { AutoRefreshImage } from "@/components/ui/AutoRefreshImage";
 
 export interface ImageMetadata {
   width: number;
@@ -19,6 +20,7 @@ interface ImageUploadStepProps {
   onError?: (error: string) => void;
   previewUrl?: string | null;
   previewLabel?: string | null;
+  onRefreshPreviewUrl?: () => Promise<string | null | undefined>;
   disabled?: boolean;
   allowReplaceWhenPreviewed?: boolean;
 }
@@ -152,6 +154,7 @@ export function ImageUploadStep({
   onError,
   previewUrl,
   previewLabel,
+  onRefreshPreviewUrl,
   disabled = false,
   allowReplaceWhenPreviewed = true,
 }: ImageUploadStepProps) {

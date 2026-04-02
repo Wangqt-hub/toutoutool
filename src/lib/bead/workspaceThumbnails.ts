@@ -7,7 +7,7 @@ function getCanvasContext(canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
 
   if (!context) {
-    throw new Error("当前浏览器不支持 Canvas。");
+    throw new Error("???????? Canvas?");
   }
 
   return context;
@@ -58,6 +58,7 @@ export function buildWorkspaceThumbnailDataUrl(
   maxEdge = 240
 ): string {
   return buildWorkspaceThumbnailCanvas(grid, palette, maxEdge).toDataURL(
-    "image/png"
+    "image/webp",
+    0.8
   );
 }
