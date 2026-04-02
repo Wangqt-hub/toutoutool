@@ -589,7 +589,7 @@ export default function AIGeneratePage() {
         ) {
           await restoreHistorySelection(
             item,
-            item.status === "SUCCEEDED" ? "??????" : "??????"
+            item.status === "SUCCEEDED" ? "历史记录原图" : "当前任务原图"
           );
         }
 

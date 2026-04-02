@@ -29,8 +29,8 @@ export function BeadImagePreviewCard({
   meta,
   fit = "cover",
   actions,
-  emptyTitle = "????",
-  emptyDescription = "?????????????????????",
+  emptyTitle = "等待内容",
+  emptyDescription = "完成当前步骤后，这里会显示对应的图片预览。",
 }: BeadImagePreviewCardProps) {
   return (
     <Card className="border-white/70 bg-white/84 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.06)] sm:p-4 xl:p-5">
