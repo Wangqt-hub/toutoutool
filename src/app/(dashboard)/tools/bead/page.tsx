@@ -26,7 +26,7 @@ type CachedOverviewPayload = {
 
 function formatDateTime(value: string | null) {
   if (!value) {
-    return "??";
+    return "刚刚";
   }
 
   return new Date(value).toLocaleString("zh-CN", {
@@ -190,7 +190,7 @@ function CurrentWorkspaceCard({
               <AutoRefreshImage
                 src={workspace.thumbnailUrl}
                 onRefreshSrc={onRefreshThumbnail}
-                alt="???????"
+                alt="当前图纸缩略图"
                 loading="eager"
                 decoding="async"
                 fetchPriority="high"
@@ -211,17 +211,17 @@ function CurrentWorkspaceCard({
                 {workspace.name}
               </h3>
               <p className="text-[11px] leading-tight text-slate-500 sm:mt-1 sm:text-xs">
-                {workspace.width} ? {workspace.height} ? {workspace.brand}
+                {workspace.width} × {workspace.height} · {workspace.brand}
               </p>
             </div>
 
             <p className="text-[10px] font-medium leading-tight text-slate-500 sm:hidden">
-              ???? {formatDateTime(workspace.lastOpenedAt)}
+              最近打开 {formatDateTime(workspace.lastOpenedAt)}
             </p>
 
             <div className="hidden rounded-xl bg-cream-50/80 px-2.5 py-2 sm:block sm:rounded-2xl sm:px-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                ????
+                最近打开
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-900">
                 {formatDateTime(workspace.lastOpenedAt)}
@@ -230,7 +230,7 @@ function CurrentWorkspaceCard({
 
             <div className="space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-600 sm:text-xs">
-                <span>?????</span>
+                <span>豆格完成度</span>
                 <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-cream-100 sm:h-2.5">
@@ -253,7 +253,7 @@ function CurrentWorkspaceCard({
               onClick={onOpen}
               disabled={loading}
             >
-              ????
+              继续制作
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
@@ -279,14 +279,14 @@ function HistoryWorkspaceCard({
       <div className="flex items-stretch gap-4">
         <WorkspaceSquareThumbnail
           src={workspace.thumbnailUrl}
-          alt="???????"
+          alt="历史图纸缩略图"
           onRefreshSrc={onRefreshThumbnail}
         />
 
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-600">
-              <span>????</span>
+              <span>完成进度</span>
               <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
             </div>
             <div className="h-2.5 overflow-hidden rounded-full bg-cream-100">
@@ -307,7 +307,7 @@ function HistoryWorkspaceCard({
             onClick={onOpen}
             disabled={loading}
           >
-            ????
+            打开图纸
           </Button>
         </div>
       </div>
@@ -336,7 +336,7 @@ export default function BeadToolPage() {
       writeOverviewCache(nextOverview);
       return nextOverview;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "????????????");
+      setError(cause instanceof Error ? cause.message : "加载拼豆工作台历史失败。");
       return null;
     } finally {
       if (!options?.background) {
@@ -401,7 +401,7 @@ export default function BeadToolPage() {
 
         router.push(`/tools/bead/bead-mode?workspace=${workspace.id}`);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "??????????");
+        setError(cause instanceof Error ? cause.message : "打开拼豆工作台失败。");
       } finally {
         setOpeningId(null);
       }
@@ -417,7 +417,7 @@ export default function BeadToolPage() {
             Bead Tool
           </p>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            ?????
+            拼豆工作台
           </h2>
         </div>
         <Button
@@ -426,7 +426,7 @@ export default function BeadToolPage() {
           size="sm"
           onClick={() => void loadOverview()}
         >
-          ??
+          刷新
         </Button>
       </div>
 
@@ -434,7 +434,7 @@ export default function BeadToolPage() {
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <PlayCircle className="h-5 w-5 text-accent-brown" />
-            <h3 className="text-lg font-semibold text-slate-900">????</h3>
+            <h3 className="text-lg font-semibold text-slate-900">当前草稿</h3>
           </div>
           <CurrentWorkspaceCard
             workspace={overview.current}
@@ -448,14 +448,14 @@ export default function BeadToolPage() {
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <History className="h-5 w-5 text-accent-brown" />
-          <h3 className="text-lg font-semibold text-slate-900">????</h3>
+          <h3 className="text-lg font-semibold text-slate-900">历史图纸</h3>
         </div>
 
         {loading ? (
           <Card className="border-white/80 bg-white/92 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
             <div className="flex items-center gap-3 text-sm text-slate-500">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-brown/25 border-t-accent-brown" />
-              ?????????...
+              正在加载历史工作台...
             </div>
           </Card>
         ) : overview?.history.length ? (
@@ -475,7 +475,7 @@ export default function BeadToolPage() {
             <div className="flex items-start gap-3">
               <Clock3 className="mt-0.5 h-5 w-5 text-slate-400" />
               <div>
-                <p className="text-sm font-medium text-slate-700">???????</p>
+                <p className="text-sm font-medium text-slate-700">还没有历史图纸</p>
               </div>
             </div>
           </Card>
@@ -490,7 +490,7 @@ export default function BeadToolPage() {
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">????</h3>
+          <h3 className="text-lg font-semibold text-slate-900">新建图纸</h3>
         </div>
 
         <ImportModeSelector />

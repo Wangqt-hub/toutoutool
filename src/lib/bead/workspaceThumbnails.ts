@@ -7,7 +7,7 @@ function getCanvasContext(canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
 
   if (!context) {
-    throw new Error("???????? Canvas?");
+    throw new Error("当前浏览器不支持 Canvas。");
   }
 
   return context;
