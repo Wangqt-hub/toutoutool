@@ -1,79 +1,47 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-
-function applyCookies(
-  source: NextResponse,
-  target: NextResponse
-): NextResponse {
-  source.cookies.getAll().forEach((cookie) => {
-    target.cookies.set(cookie);
-  });
-
-  return target;
-}
+﻿import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_HINT_COOKIE_NAME } from "@/lib/auth/session";
+import { getRequestSession } from "@/lib/auth/server";
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet: Array<{
-          name: string;
-          value: string;
-          options: CookieOptions;
-        }>) {
-          cookiesToSet.forEach(({ name, value }) => {
-            request.cookies.set(name, value);
-          });
-
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          });
-
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const session = await getRequestSession(request);
   const pathname = request.nextUrl.pathname;
+  const isHomeRoute = pathname === "/";
   const isProtectedRoute = pathname.startsWith("/tools");
   const isAuthRoute = pathname === "/login" || pathname === "/register";
+  const hasSessionHint = request.cookies.get(SESSION_HINT_COOKIE_NAME)?.value === "1";
 
-  if (isProtectedRoute && !user) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/login";
-    redirectUrl.searchParams.set("from", pathname);
-    return applyCookies(response, NextResponse.redirect(redirectUrl));
-  }
-
-  if (isAuthRoute && user) {
+  if (isHomeRoute && session) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/tools";
     redirectUrl.search = "";
-    return applyCookies(response, NextResponse.redirect(redirectUrl));
+    return NextResponse.redirect(redirectUrl);
   }
 
-  return response;
+  if (isHomeRoute && !session && hasSessionHint) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/auth/restore";
+    redirectUrl.search = "";
+    redirectUrl.searchParams.set("to", "/tools");
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (isProtectedRoute && !session) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("from", pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (isAuthRoute && session) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/tools";
+    redirectUrl.search = "";
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/tools/:path*", "/login", "/register"],
+  matcher: ["/", "/tools/:path*", "/login", "/register"],
 };

@@ -2,41 +2,58 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type SubscriptionTier = "free" | "premium";
-
-type ProfileRow = {
-  subscription_tier: SubscriptionTier | null;
-};
 
 export function MembershipPreviewButton() {
   const [open, setOpen] = useState(false);
   const [tier, setTier] = useState<SubscriptionTier>("free");
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
+    if (!open || profileLoaded) {
+      return;
+    }
+
+    let cancelled = false;
 
     async function loadProfile() {
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("subscription_tier")
-          .maybeSingle();
+        const response = await fetch("/api/profile");
 
-        if (!error && data) {
-          const row = data as ProfileRow;
-          if (row.subscription_tier === "premium") {
-            setTier("premium");
-          }
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          success: boolean;
+          data?: {
+            subscriptionTier?: SubscriptionTier;
+          };
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        if (payload.success && payload.data?.subscriptionTier === "premium") {
+          setTier("premium");
         }
       } catch {
-        // 如果表或字段暂未创建，忽略错误，默认 free
+        // Keep the default preview state if the profile API is unavailable.
+      } finally {
+        if (!cancelled) {
+          setProfileLoaded(true);
+        }
       }
     }
 
-    loadProfile();
-  }, []);
+    void loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, profileLoaded]);
 
   return (
     <div className="relative">
@@ -47,25 +64,17 @@ export function MembershipPreviewButton() {
         className="hidden md:inline-flex"
         onClick={() => setOpen((prev) => !prev)}
       >
-        {tier === "premium" ? "预览会员 · 已解锁" : "会员预留"}
+        {tier === "premium" ? "VIP用户" : "普通用户"}
       </Button>
       {open && (
         <div className="absolute right-0 mt-2 w-64 rounded-3xl border border-cream-100 bg-white/95 shadow-[0_12px_40px_rgba(0,0,0,0.12)] p-3 text-[11px] text-slate-700 z-20">
-          <p className="font-semibold mb-1">会员功能预告</p>
-          <ul className="space-y-1 mb-2 text-slate-600">
-            <li>· 更大的拼豆图纸尺寸与完整色卡支持。</li>
-            <li>· 更聪明的 AI 旅行路线优化与备选方案。</li>
-            <li>· 优先体验新工具、提前内测资格。</li>
-          </ul>
-          <p className="text-[10px] text-slate-500">
-            目前还在设计阶段，等功能准备好后，会在这里第一时间告诉你。{" "}
+          <p className="text-[13.5px] text-slate-500">
             {tier === "premium"
-              ? "感谢你提前支持头头工具！"
-              : "现在所有基础功能对你都是免费的。"}
+              ? "你已经是VIP了"
+              : "当前版本你能使用全部核心功能"}
           </p>
         </div>
       )}
     </div>
   );
 }
-

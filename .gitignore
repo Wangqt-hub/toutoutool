@@ -9,3 +9,6 @@ tsconfig.tsbuildinfo
 .env.*.local
 .env.local
 
+
+.cloudbase-home/
+.cloudbase-mcp/

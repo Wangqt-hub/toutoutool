@@ -1,6 +1,10 @@
-import { NextResponse } from "next/server";
-import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
-import { activateBeadWorkspace } from "@/lib/bead/workspacesServer";
+﻿import { NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth/server";
+import { callCloudBaseFunction, CloudBaseFunctionError } from "@/lib/server/cloudbase-functions";
+import {
+  type BeadWorkspaceRow,
+  toWorkspaceSummary,
+} from "@/lib/bead/workspacesBackend";
 
 type RouteContext = {
   params: {
@@ -10,9 +14,9 @@ type RouteContext = {
 
 export async function POST(_request: Request, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const session = await getServerSession();
 
-    if (!user) {
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
@@ -22,12 +26,16 @@ export async function POST(_request: Request, context: RouteContext) {
       );
     }
 
-    const workspace = await activateBeadWorkspace({
-      userId: user.id,
+    const payload = await callCloudBaseFunction<{
+      currentWorkspaceId: string | null;
+      row: BeadWorkspaceRow | null;
+    }>("toutoutool-bead", {
+      action: "activateWorkspace",
+      userId: session.userId,
       workspaceId: context.params.id,
     });
 
-    if (!workspace) {
+    if (!payload.row) {
       return NextResponse.json(
         {
           success: false,
@@ -39,7 +47,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
     return NextResponse.json({
       success: true,
-      data: workspace,
+      data: toWorkspaceSummary(payload.row, payload.currentWorkspaceId),
     });
   } catch (error) {
     return NextResponse.json(
@@ -48,7 +56,10 @@ export async function POST(_request: Request, context: RouteContext) {
         error:
           error instanceof Error ? error.message : "Failed to activate workspace.",
       },
-      { status: 500 }
+      {
+        status:
+          error instanceof CloudBaseFunctionError ? error.status : 500,
+      }
     );
   }
 }

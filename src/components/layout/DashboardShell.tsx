@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 import { LogoutButton } from "@/components/ui/logout-button";
 import { MembershipPreviewButton } from "@/components/ui/membership-preview";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
@@ -112,11 +111,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     };
   }, [updateHeaderHeight]);
 
-  useEffect(() => {
-    const routes = ["/tools", "/tools/bead", "/tools/travel", "/tools/ideas"];
-    routes.forEach((route) => router.prefetch(route as any));
-  }, [router]);
-
   return (
     <div
       className={`bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.94),rgba(255,247,237,0.92)_36%,rgba(255,251,235,0.88)_100%)] ${
@@ -164,7 +158,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               href="/tools/ideas"
               className="rounded-full px-3 py-1 text-slate-700 transition-colors hover:bg-cream-100"
             >
-              灵感箱
+              奇思妙想箱
             </Link>
           </nav>
 
@@ -246,7 +240,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 className="rounded-2xl px-3 py-2 text-slate-700 hover:bg-cream-100"
                 onClick={() => setOpen(false)}
               >
-                灵感箱
+                奇思妙想箱
               </Link>
             </nav>
 

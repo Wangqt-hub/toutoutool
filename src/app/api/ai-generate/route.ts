@@ -1,40 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth/server";
 import {
   type AIGenerationHistoryItem,
 } from "@/lib/bead/aiGeneration";
 import {
-  buildAIGenerationHistoryItem,
-  buildSourceImagePath,
-  createDashScopeSyncImageEdit,
-  createSignedStorageUrl,
-  getActiveGeneration,
-  getProgressForStatus,
-  getStyleSelection,
-  insertGeneration,
-  pruneOldGenerations,
-  updateGeneration,
-  uploadAIResultFromUrl,
-  uploadGenerationImageVariants,
-  uploadStorageObject,
-} from "@/lib/bead/aiGenerationServer";
+  callAIService,
+  CloudRunServiceError,
+} from "@/lib/server/cloudrun";
 
 export const runtime = "nodejs";
-
-async function serializeGeneration(options: {
-  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
-  generation: Awaited<ReturnType<typeof getActiveGeneration>>;
-}): Promise<AIGenerationHistoryItem | null> {
-  if (!options.generation) {
-    return null;
-  }
-
-  return buildAIGenerationHistoryItem({
-    supabaseAdmin: options.supabaseAdmin,
-    row: options.generation,
-  });
-}
 
 function conflictResponse(message: string, item?: AIGenerationHistoryItem | null) {
   return NextResponse.json(
@@ -48,39 +22,16 @@ function conflictResponse(message: string, item?: AIGenerationHistoryItem | null
 }
 
 export async function POST(request: NextRequest) {
-  const supabaseAdmin = createSupabaseAdminClient();
-  let generationId = "";
-  let userId = "";
-
   try {
-    const user = await getAuthenticatedUser();
+    const session = await getServerSession();
 
-    if (!user) {
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
           error: "Authentication required.",
         },
         { status: 401 }
-      );
-    }
-
-    userId = user.id;
-
-    const activeGeneration = await getActiveGeneration({
-      supabaseAdmin,
-      userId,
-    });
-
-    if (activeGeneration) {
-      const activeItem = await serializeGeneration({
-        supabaseAdmin,
-        generation: activeGeneration,
-      });
-
-      return conflictResponse(
-        "You already have an AI generation in progress.",
-        activeItem
       );
     }
 
@@ -99,157 +50,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    generationId = crypto.randomUUID();
-    const { prompt, styleName } = getStyleSelection(styleId, customPrompt);
-    const sourceImagePath = buildSourceImagePath(userId, generationId, image);
-
-    let generation = await insertGeneration({
-      supabaseAdmin,
-      row: {
-        id: generationId,
-        user_id: userId,
-        style_id: styleId,
-        style_name: styleName,
-        prompt,
-        status: "UPLOADING_SOURCE",
-        progress_percent: getProgressForStatus("UPLOADING_SOURCE"),
-        source_image_path: sourceImagePath,
-        ai_image_path: null,
-        dashscope_task_id: null,
-        error_message: null,
-        completed_at: null,
-      },
-    });
-
-    try {
-      const sourceBuffer = new Uint8Array(await image.arrayBuffer());
-
-      await uploadStorageObject({
-        supabaseAdmin,
-        path: sourceImagePath,
-        body: sourceBuffer,
+    const imageBuffer = Buffer.from(await image.arrayBuffer());
+    const item = await callAIService<AIGenerationHistoryItem>("generate", {
+      method: "POST",
+      body: {
+        userId: session.userId,
+        phoneNumber: session.phoneNumber,
+        styleId,
+        customPrompt,
+        fileName: image.name,
         contentType: image.type || "image/png",
-      });
-
-      try {
-        await uploadGenerationImageVariants({
-          supabaseAdmin,
-          userId,
-          generationId,
-          kind: "source",
-          sourceBuffer,
-        });
-      } catch {
-        // Variant uploads are best-effort and should not fail the main task.
-      }
-
-      const sourceImageUrl = await createSignedStorageUrl({
-        supabaseAdmin,
-        path: sourceImagePath,
-      });
-
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId,
-        updates: {
-          status: "RUNNING",
-          progress_percent: getProgressForStatus("RUNNING"),
-          dashscope_task_id: null,
-          error_message: null,
-        },
-      });
-
-      const resultImageUrl = await createDashScopeSyncImageEdit({
-        imageInput: sourceImageUrl,
-        prompt,
-      });
-
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId,
-        updates: {
-          status: "SAVING_RESULT",
-          progress_percent: getProgressForStatus("SAVING_RESULT"),
-          dashscope_task_id: null,
-          error_message: null,
-        },
-      });
-
-      const aiImagePath = await uploadAIResultFromUrl({
-        supabaseAdmin,
-        imageUrl: resultImageUrl,
-        userId,
-        generationId,
-      });
-
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId,
-        updates: {
-          status: "SUCCEEDED",
-          progress_percent: getProgressForStatus("SUCCEEDED"),
-          ai_image_path: aiImagePath,
-          dashscope_task_id: null,
-          error_message: null,
-          completed_at: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId,
-        updates: {
-          status: "FAILED",
-          progress_percent: getProgressForStatus("FAILED"),
-          error_message:
-            error instanceof Error
-              ? error.message
-              : "Failed to start AI generation.",
-          completed_at: new Date().toISOString(),
-        },
-      });
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: generation.error_message,
-          data: await serializeGeneration({
-            supabaseAdmin,
-            generation,
-          }),
-        },
-        { status: 500 }
-      );
-    }
-
-    await pruneOldGenerations({
-      supabaseAdmin,
-      userId,
+        imageBase64: imageBuffer.toString("base64"),
+      },
     });
 
     return NextResponse.json({
       success: true,
-      data: await serializeGeneration({
-        supabaseAdmin,
-        generation,
-      }),
+      data: item,
     });
   } catch (error) {
-    if (error instanceof Error) {
-      const message = error.message.toLowerCase();
-
-      if (
-        message.includes("idx_bead_ai_generations_user_active") ||
-        message.includes("duplicate key")
-      ) {
+    if (error instanceof CloudRunServiceError) {
+      if (error.status === 409) {
         return conflictResponse(
-          "You already have an AI generation in progress."
+          error.message,
+          (error.data as AIGenerationHistoryItem | null | undefined) ?? null
         );
       }
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          data: error.data ?? null,
+        },
+        { status: error.status }
+      );
     }
 
     return NextResponse.json(

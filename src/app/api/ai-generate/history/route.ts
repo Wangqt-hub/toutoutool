@@ -1,28 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth/server";
+import type { AIGenerationHistoryItem } from "@/lib/bead/aiGeneration";
 import {
-  buildAIGenerationHistoryItem,
-  getLatestGenerations,
-} from "@/lib/bead/aiGenerationServer";
+  callAIService,
+  CloudRunServiceError,
+} from "@/lib/server/cloudrun";
 
 export const runtime = "nodejs";
-const HISTORY_ETAG_VERSION = "v2-image-variants";
+const HISTORY_ETAG_VERSION = "v3-cloudbase";
 
-function buildHistoryETag(
-  generations: Array<{
-    id: string;
-    status: string;
-    updated_at: string;
-    ai_image_path: string | null;
-  }>
-): string {
-  const seed = generations
+function buildHistoryETag(items: AIGenerationHistoryItem[]): string {
+  const seed = items
     .map(
-      (generation) =>
-        `${generation.id}:${generation.status}:${generation.updated_at}:${
-          generation.ai_image_path || ""
-        }`
+      (item) =>
+        `${item.id}:${item.status}:${item.updatedAt}:${item.aiImageProxyUrl || ""}`
     )
     .join("|");
 
@@ -33,9 +24,9 @@ function buildHistoryETag(
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser();
+    const session = await getServerSession();
 
-    if (!user) {
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
@@ -45,21 +36,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabaseAdmin = createSupabaseAdminClient();
-    const generations = await getLatestGenerations({
-      supabaseAdmin,
-      userId: user.id,
-      limit: 10,
+    const items = await callAIService<AIGenerationHistoryItem[]>("history", {
+      method: "POST",
+      body: {
+        userId: session.userId,
+      },
     });
-    const items = await Promise.all(
-      generations.map((generation) =>
-        buildAIGenerationHistoryItem({
-          supabaseAdmin,
-          row: generation,
-        })
-      )
-    );
-    const etag = buildHistoryETag(generations);
+    const etag = buildHistoryETag(items);
 
     if (request.headers.get("if-none-match") === etag) {
       return new NextResponse(null, {
@@ -92,7 +75,10 @@ export async function GET(request: NextRequest) {
             ? error.message
             : "Failed to load AI generation history.",
       },
-      { status: 500 }
+      {
+        status:
+          error instanceof CloudRunServiceError ? error.status : 500,
+      }
     );
   }
 }

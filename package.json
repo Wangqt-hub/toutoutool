@@ -10,8 +10,7 @@
     "optimize:mascot": "node scripts/optimize-mascot.mjs"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.5.0",
-    "@supabase/supabase-js": "^2.49.1",
+    "@cloudbase/js-sdk": "^2.27.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.3.31",

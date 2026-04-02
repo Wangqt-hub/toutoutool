@@ -13,6 +13,7 @@ export type AIGenerationStatus =
   (typeof AI_GENERATION_STATUS_ORDER)[number];
 
 export type AIGenerationImageKind = "source" | "ai";
+export type AIGenerationImageVariant = "original" | "display" | "thumb";
 
 export interface AIGenerationHistoryRow {
   id: string;
@@ -65,12 +66,12 @@ export const AI_GENERATION_STATUS_LABELS: Record<
   AIGenerationStatus,
   string
 > = {
-  UPLOADING_SOURCE: "上传原图",
-  PENDING: "排队中",
-  RUNNING: "生成中",
-  SAVING_RESULT: "保存结果",
-  SUCCEEDED: "已完成",
-  FAILED: "失败",
+  UPLOADING_SOURCE: "\u4E0A\u4F20\u539F\u56FE",
+  PENDING: "\u6392\u961F\u4E2D",
+  RUNNING: "\u751F\u6210\u4E2D",
+  SAVING_RESULT: "\u4FDD\u5B58\u7ED3\u679C",
+  SUCCEEDED: "\u5DF2\u5B8C\u6210",
+  FAILED: "\u5931\u8D25",
 };
 
 export const AI_GENERATION_ACTIVE_STATUSES: AIGenerationStatus[] = [
@@ -99,22 +100,44 @@ export function isAIGenerationTerminal(
 
 export function buildAIGenerationImageUrl(
   generationId: string,
-  kind: AIGenerationImageKind
+  kind: AIGenerationImageKind,
+  variant: AIGenerationImageVariant = "original"
 ): string {
-  return `/api/ai-generate/history/${generationId}/image?kind=${kind}`;
+  const search =
+    variant === "original"
+      ? `kind=${kind}`
+      : `kind=${kind}&variant=${variant}`;
+
+  return `/api/ai-generate/history/${generationId}/image?${search}`;
 }
 
 export function toAIGenerationHistoryItem(
   row: AIGenerationHistoryRow
 ): AIGenerationHistoryItem {
-  const sourceImageProxyUrl = buildAIGenerationImageUrl(row.id, "source");
+  const sourceImageProxyUrl = buildAIGenerationImageUrl(
+    row.id,
+    "source",
+    "original"
+  );
   const aiImageProxyUrl = row.ai_image_path
-    ? buildAIGenerationImageUrl(row.id, "ai")
+    ? buildAIGenerationImageUrl(row.id, "ai", "original")
     : null;
-  const aiImageUrl = aiImageProxyUrl;
-  const aiThumbnailUrl = aiImageProxyUrl;
-  const sourceImageUrl = sourceImageProxyUrl;
-  const sourceThumbnailUrl = sourceImageProxyUrl;
+  const aiImageUrl = row.ai_image_path
+    ? buildAIGenerationImageUrl(row.id, "ai", "display")
+    : null;
+  const aiThumbnailUrl = row.ai_image_path
+    ? buildAIGenerationImageUrl(row.id, "ai", "thumb")
+    : null;
+  const sourceImageUrl = buildAIGenerationImageUrl(
+    row.id,
+    "source",
+    "display"
+  );
+  const sourceThumbnailUrl = buildAIGenerationImageUrl(
+    row.id,
+    "source",
+    "thumb"
+  );
 
   return {
     id: row.id,

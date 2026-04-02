@@ -282,11 +282,11 @@ export default function AIGeneratePage() {
   const [historyEtag, setHistoryEtag] = useState<string | null>(null);
   const [optimisticItem, setOptimisticItem] =
     useState<AIGenerationHistoryItem | null>(null);
+  const [progressNow, setProgressNow] = useState(() => Date.now());
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
     null
   );
-  const [progressNow, setProgressNow] = useState(() => Date.now());
 
   const [canvasWidth, setCanvasWidth] = useState<number>(32);
   const [canvasHeight, setCanvasHeight] = useState<number>(32);
@@ -331,22 +331,10 @@ export default function AIGeneratePage() {
   const restoreRequestIdRef = useRef(0);
   const pollInFlightRef = useRef(false);
   const pollFailureCountRef = useRef(0);
-
-  useEffect(() => {
-    if (!currentTaskItem || !isAIGenerationActive(currentTaskItem.status)) {
-      return;
-    }
-
-    setProgressNow(Date.now());
-
-    const timer = window.setInterval(() => {
-      setProgressNow(Date.now());
-    }, 400);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [currentTaskItem]);
+  const activeHistoryEtagRef = useRef<string | null>(null);
+  const imageMetadataCacheRef = useRef<Map<string, ImageMetadata | null>>(
+    new Map()
+  );
 
   const getDisplayedProgress = useCallback(
     (item: AIGenerationHistoryItem | null | undefined) =>
@@ -375,6 +363,26 @@ export default function AIGeneratePage() {
   useEffect(() => {
     imageMetadataRef.current = imageMetadata;
   }, [imageMetadata]);
+
+  useEffect(() => {
+    activeHistoryEtagRef.current = null;
+  }, [activeHistoryId]);
+
+  useEffect(() => {
+    if (!currentTaskItem || !isAIGenerationActive(currentTaskItem.status)) {
+      return undefined;
+    }
+
+    setProgressNow(Date.now());
+
+    const timer = window.setInterval(() => {
+      setProgressNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [currentTaskItem]);
 
   const resetPatternState = useCallback(() => {
     setGrid(null);
@@ -418,6 +426,18 @@ export default function AIGeneratePage() {
     []
   );
 
+  const loadCachedImageMetadata = useCallback(async (url: string) => {
+    const cache = imageMetadataCacheRef.current;
+
+    if (cache.has(url)) {
+      return cache.get(url) ?? null;
+    }
+
+    const metadata = await loadImageMetadata(url);
+    cache.set(url, metadata);
+    return metadata;
+  }, []);
+
   const restoreHistorySelection = useCallback(
     async (item: AIGenerationHistoryItem, label: string) => {
       const requestId = ++restoreRequestIdRef.current;
@@ -433,7 +453,7 @@ export default function AIGeneratePage() {
       setImageFile(null);
       resetPatternState();
 
-      const preferredMetadata = await loadImageMetadata(previewImageUrl);
+      const preferredMetadata = await loadCachedImageMetadata(previewImageUrl);
 
       if (restoreRequestIdRef.current !== requestId) {
         return;
@@ -445,7 +465,7 @@ export default function AIGeneratePage() {
         syncAspectRatioSize(canvasWidthRef.current, preferredMetadata);
       }
     },
-    [resetPatternState, syncAspectRatioSize]
+    [loadCachedImageMetadata, resetPatternState, syncAspectRatioSize]
   );
 
   const applyLoadedHistory = useCallback(
@@ -555,24 +575,77 @@ export default function AIGeneratePage() {
     }
 
     let cancelled = false;
+    let timer: number | null = null;
+
+    const scheduleNextPoll = (
+      status: AIGenerationHistoryItem["status"] | null,
+      failureCount: number
+    ) => {
+      if (cancelled) {
+        return;
+      }
+
+      const baseDelay =
+        failureCount > 0
+          ? Math.min(15000, 2000 * 2 ** (failureCount - 1))
+          : status === "UPLOADING_SOURCE"
+          ? 2000
+          : status === "PENDING"
+          ? 4000
+          : 6000;
+      const delay =
+        document.visibilityState === "hidden"
+          ? Math.max(baseDelay, 15000)
+          : baseDelay;
+
+      timer = window.setTimeout(() => {
+        void poll();
+      }, delay);
+    };
 
     const poll = async () => {
-      if (pollInFlightRef.current) {
+      if (cancelled || pollInFlightRef.current) {
+        return;
+      }
+
+      if (document.visibilityState === "hidden") {
+        scheduleNextPoll(null, pollFailureCountRef.current);
         return;
       }
 
       pollInFlightRef.current = true;
 
       try {
+        const headers: HeadersInit = {};
+
+        if (activeHistoryEtagRef.current) {
+          headers["If-None-Match"] = activeHistoryEtagRef.current;
+        }
+
         const response = await fetch(`/api/ai-generate/history/${activeHistoryId}`, {
           cache: "no-store",
+          headers: Object.keys(headers).length > 0 ? headers : undefined,
         });
-        const payload = await readJsonResponse(response);
-        const item = payload.data as AIGenerationHistoryItem;
 
         if (cancelled) {
           return;
         }
+
+        if (response.status === 304) {
+          pollFailureCountRef.current = 0;
+          setError(null);
+          scheduleNextPoll(null, 0);
+          return;
+        }
+
+        const nextEtag = response.headers.get("etag");
+
+        if (nextEtag) {
+          activeHistoryEtagRef.current = nextEtag;
+        }
+
+        const payload = await readJsonResponse(response);
+        const item = payload.data as AIGenerationHistoryItem;
 
         pollFailureCountRef.current = 0;
         setError(null);
@@ -586,7 +659,7 @@ export default function AIGeneratePage() {
         ) {
           await restoreHistorySelection(
             item,
-            item.status === "SUCCEEDED" ? "历史记录原图" : "当前任务原图"
+            item.status === "SUCCEEDED" ? "\u5386\u53F2\u8BB0\u5F55\u539F\u56FE" : "\u5F53\u524D\u4EFB\u52A1\u539F\u56FE"
           );
         }
 
@@ -594,52 +667,53 @@ export default function AIGeneratePage() {
 
         if (item.status === "FAILED") {
           setActiveHistoryId(null);
-          setError(item.errorMessage || "AI 生成失败。");
+          setError(item.errorMessage || "AI \u751F\u6210\u5931\u8D25\u3002");
           return;
         }
 
         if (!isAIGenerationActive(item.status)) {
           setActiveHistoryId(null);
+          return;
         }
+
+        scheduleNextPoll(item.status, 0);
       } catch (pollError) {
         if (!cancelled) {
           pollFailureCountRef.current += 1;
           const message =
             pollError instanceof Error
               ? pollError.message
-              : "刷新 AI 生成状态失败。";
+              : "\u5237\u65B0 AI \u751F\u6210\u72B6\u6001\u5931\u8D25\u3002";
 
           if (
             message.includes("Authentication required") ||
             message.includes("Generation record not found")
           ) {
             setActiveHistoryId(null);
+            return;
           }
 
           setError(
             message === "Failed to fetch"
-              ? "网络波动，正在重试获取 AI 结果。"
+              ? "\u7F51\u7EDC\u6CE2\u52A8\uFF0C\u6B63\u5728\u91CD\u8BD5\u83B7\u53D6 AI \u7ED3\u679C\u3002"
               : message
           );
+          scheduleNextPoll(null, pollFailureCountRef.current);
         }
       } finally {
         pollInFlightRef.current = false;
       }
     };
 
-    poll().catch(() => {
-      // Error state is already handled in poll.
-    });
-
-    const timer = window.setInterval(() => {
-      poll().catch(() => {
-        // Error state is already handled in poll.
-      });
-    }, 10000);
+    void poll();
 
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+
       pollInFlightRef.current = false;
     };
   }, [activeHistoryId, restoreHistorySelection]);
@@ -744,7 +818,8 @@ export default function AIGeneratePage() {
 
   const handleCreatePattern = useCallback(async () => {
     const aiImageUrl = selectedCompletedHistory
-      ? getPreferredAIImageUrl(selectedCompletedHistory)
+      ? selectedCompletedHistory.aiImageProxyUrl ||
+        getPreferredAIImageUrl(selectedCompletedHistory)
       : null;
 
     if (!aiImageUrl) {

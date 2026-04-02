@@ -1,20 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
+import { getServerSession } from "@/lib/auth/server";
+import type { AIGenerationHistoryItem } from "@/lib/bead/aiGeneration";
 import {
-  isAIGenerationTerminal,
-} from "@/lib/bead/aiGeneration";
-import {
-  buildAIGenerationHistoryItem,
-  fetchDashScopeTask,
-  getDashScopeErrorMessage,
-  getProgressForStatus,
-  getDashScopeResultImageUrl,
-  getGenerationById,
-  mapDashScopeTaskStatus,
-  updateGeneration,
-  uploadAIResultFromUrl,
-} from "@/lib/bead/aiGenerationServer";
+  callAIService,
+  CloudRunServiceError,
+} from "@/lib/server/cloudrun";
 
 export const runtime = "nodejs";
 
@@ -24,25 +14,24 @@ type RouteContext = {
   };
 };
 
-async function serializeGeneration(options: {
-  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
-  generation: Awaited<ReturnType<typeof getGenerationById>>;
-}) {
-  if (!options.generation) {
-    return null;
-  }
+function buildHistoryItemETag(item: AIGenerationHistoryItem) {
+  const seed = [
+    item.id,
+    item.status,
+    item.updatedAt,
+    item.completedAt || "",
+    item.aiImageProxyUrl || "",
+    item.errorMessage || "",
+  ].join(":");
 
-  return buildAIGenerationHistoryItem({
-    supabaseAdmin: options.supabaseAdmin,
-    row: options.generation,
-  });
+  return `"${Buffer.from(seed).toString("base64url")}"`;
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const session = await getServerSession();
 
-    if (!user) {
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
@@ -52,16 +41,17 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    const supabaseAdmin = createSupabaseAdminClient();
-    const generationId = context.params.id;
+    const item = await callAIService<AIGenerationHistoryItem | null>(
+      `history/${context.params.id}`,
+      {
+        method: "POST",
+        body: {
+          userId: session.userId,
+        },
+      }
+    );
 
-    let generation = await getGenerationById({
-      supabaseAdmin,
-      userId: user.id,
-      generationId,
-    });
-
-    if (!generation) {
+    if (!item) {
       return NextResponse.json(
         {
           success: false,
@@ -71,139 +61,30 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (isAIGenerationTerminal(generation.status)) {
-      return NextResponse.json({
-        success: true,
-        data: await serializeGeneration({
-          supabaseAdmin,
-          generation,
-        }),
+    const etag = buildHistoryItemETag(item);
+
+    if (request.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, no-cache, must-revalidate",
+        },
       });
     }
 
-    if (!generation.dashscope_task_id) {
-      return NextResponse.json({
+    return NextResponse.json(
+      {
         success: true,
-        data: await serializeGeneration({
-          supabaseAdmin,
-          generation,
-        }),
-      });
-    }
-
-    const taskPayload = await fetchDashScopeTask(generation.dashscope_task_id);
-    const taskStatus = mapDashScopeTaskStatus(
-      taskPayload.output?.task_status || generation.status
+        data: item,
+      },
+      {
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, no-cache, must-revalidate",
+        },
+      }
     );
-
-    if (taskStatus === "PENDING" || taskStatus === "RUNNING") {
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId: user.id,
-        updates: {
-          status: taskStatus,
-          progress_percent: getProgressForStatus(taskStatus),
-          error_message: null,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: await serializeGeneration({
-          supabaseAdmin,
-          generation,
-        }),
-      });
-    }
-
-    if (taskStatus === "FAILED") {
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId: user.id,
-        updates: {
-          status: "FAILED",
-          progress_percent: getProgressForStatus("FAILED"),
-          error_message: getDashScopeErrorMessage(
-            taskPayload,
-            "DashScope generation failed."
-          ),
-          completed_at: new Date().toISOString(),
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: await serializeGeneration({
-          supabaseAdmin,
-          generation,
-        }),
-      });
-    }
-
-    generation = await updateGeneration({
-      supabaseAdmin,
-      generationId,
-      userId: user.id,
-      updates: {
-        status: "SAVING_RESULT",
-        progress_percent: getProgressForStatus("SAVING_RESULT"),
-        error_message: null,
-      },
-    });
-
-    const resultImageUrl = getDashScopeResultImageUrl(taskPayload);
-
-    if (!resultImageUrl) {
-      generation = await updateGeneration({
-        supabaseAdmin,
-        generationId,
-        userId: user.id,
-        updates: {
-          status: "FAILED",
-          progress_percent: getProgressForStatus("FAILED"),
-          error_message: "DashScope task succeeded but did not return an image.",
-          completed_at: new Date().toISOString(),
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: await serializeGeneration({
-          supabaseAdmin,
-          generation,
-        }),
-      });
-    }
-
-    const aiImagePath = await uploadAIResultFromUrl({
-      supabaseAdmin,
-      imageUrl: resultImageUrl,
-      userId: user.id,
-      generationId,
-    });
-
-    generation = await updateGeneration({
-      supabaseAdmin,
-      generationId,
-      userId: user.id,
-      updates: {
-        status: "SUCCEEDED",
-        progress_percent: getProgressForStatus("SUCCEEDED"),
-        ai_image_path: aiImagePath,
-        error_message: null,
-        completed_at: new Date().toISOString(),
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: await serializeGeneration({
-        supabaseAdmin,
-        generation,
-      }),
-    });
   } catch (error) {
     return NextResponse.json(
       {
@@ -213,7 +94,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
             ? error.message
             : "Failed to refresh AI generation status.",
       },
-      { status: 500 }
+      {
+        status:
+          error instanceof CloudRunServiceError ? error.status : 500,
+      }
     );
   }
 }

@@ -1,0 +1,18 @@
+{
+  "envId": "love-0g6vbu3reb419ea6",
+  "functions": [
+    "toutoutool-user",
+    "toutoutool-bead"
+  ],
+  "cloudrun": {
+    "name": "toutoutool-ai",
+    "defaultDomain": "https://toutoutool-ai-240787-8-1323186887.sh.run.tcloudbase.com"
+  },
+  "sql": {
+    "instance": "default",
+    "schema": "love-0g6vbu3reb419ea6"
+  },
+  "storage": {
+    "bucket": "6c6f-love-0g6vbu3reb419ea6-1323186887"
+  }
+}

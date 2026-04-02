@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Wand2, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PIXEL_STYLES } from "@/lib/bead/pixelStyles";
-import { Wand2, Sparkles } from "lucide-react";
 
 interface StyleSelectorProps {
   selectedStyle?: string;
@@ -12,6 +12,15 @@ interface StyleSelectorProps {
   onCustomPromptChange?: (prompt: string) => void;
   disabled?: boolean;
 }
+
+const STYLE_LABEL = "2. \u9009\u62e9\u98ce\u683c";
+const CUSTOM_PROMPT_TOGGLE = "\u4f7f\u7528\u81ea\u5b9a\u4e49\u63d0\u793a\u8bcd";
+const CUSTOM_PROMPT_COLLAPSE = "\u6536\u8d77\u81ea\u5b9a\u4e49\u63d0\u793a\u8bcd";
+const CUSTOM_PROMPT_LABEL = "\u81ea\u5b9a\u4e49\u63d0\u793a\u8bcd";
+const CUSTOM_PROMPT_PLACEHOLDER =
+  "\u5982\u679c\u4f60\u60f3\u8981\u66f4\u5177\u4f53\u7684\u6548\u679c\uff0c\u53ef\u4ee5\u8865\u5145\u63cf\u8ff0\uff0c\u4f8b\u5982\uff1apixel art, cozy retro game style, soft pastel colors";
+const STYLE_HINT =
+  "\u9ed8\u8ba4\u4f1a\u4f7f\u7528\u4f60\u9009\u4e2d\u7684\u98ce\u683c\u63d0\u793a\u8bcd\uff0c\u4e5f\u53ef\u4ee5\u5207\u6362\u6210\u4f60\u81ea\u5df1\u7684\u63cf\u8ff0\u3002";
 
 export function StyleSelector({
   selectedStyle,
@@ -25,9 +34,9 @@ export function StyleSelector({
   return (
     <Card className="space-y-4">
       <div className="space-y-2">
-        <label className="text-xs font-medium text-slate-700 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-purple-500" />
-          2. 选择像素风格
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+          <Sparkles className="h-4 w-4 text-rose-500" />
+          {STYLE_LABEL}
         </label>
 
         <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-3 sm:gap-3 xl:grid-cols-4">
@@ -42,12 +51,12 @@ export function StyleSelector({
               }}
               className={`rounded-2xl border-2 p-2.5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 sm:p-3 ${
                 selectedStyle === style.id && !useCustom
-                  ? "border-purple-500 bg-purple-50 ring-2 ring-purple-200"
-                  : "border-cream-100 bg-white/70 hover:border-purple-300"
+                  ? "border-rose-400 bg-rose-50 ring-2 ring-rose-100"
+                  : "border-cream-100 bg-white/70 hover:border-rose-200"
               }`}
             >
               <div className="mb-1.5 flex items-center gap-1.5 sm:mb-2 sm:gap-2">
-                <Wand2 className="h-3.5 w-3.5 text-purple-500 sm:h-4 sm:w-4" />
+                <Wand2 className="h-3.5 w-3.5 text-rose-500 sm:h-4 sm:w-4" />
                 <span className="text-[11px] font-semibold text-slate-900 sm:text-xs">
                   {style.name}
                 </span>
@@ -64,16 +73,16 @@ export function StyleSelector({
             type="button"
             disabled={disabled}
             onClick={() => setUseCustom((value) => !value)}
-            className="text-xs text-purple-600 font-medium hover:underline flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center gap-1 text-xs font-medium text-rose-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Sparkles className="w-3 h-3" />
-            {useCustom ? "使用预设风格" : "自定义提示词"}
+            <Sparkles className="h-3 w-3" />
+            {useCustom ? CUSTOM_PROMPT_COLLAPSE : CUSTOM_PROMPT_TOGGLE}
           </button>
 
-          {useCustom && (
+          {useCustom ? (
             <div className="mt-2 space-y-2">
               <label className="text-xs font-medium text-slate-700">
-                自定义 Prompt
+                {CUSTOM_PROMPT_LABEL}
               </label>
               <textarea
                 value={customPrompt || ""}
@@ -81,16 +90,14 @@ export function StyleSelector({
                   onCustomPromptChange?.(event.target.value)
                 }
                 disabled={disabled}
-                placeholder="输入你想要的像素风格描述，例如：pixel art, retro game style, vibrant colors..."
-                className="w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-purple-500 min-h-[80px] disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder={CUSTOM_PROMPT_PLACEHOLDER}
+                className="min-h-[80px] w-full rounded-2xl border border-cream-100 bg-cream-50/60 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
-          )}
+          ) : null}
         </div>
 
-        <p className="text-[11px] text-slate-500">
-          AI 会根据选择的风格把你的图片转换成像素艺术效果。
-        </p>
+        <p className="text-[11px] text-slate-500">{STYLE_HINT}</p>
       </div>
     </Card>
   );
