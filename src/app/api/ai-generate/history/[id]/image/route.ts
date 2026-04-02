@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
-import {
-  type AIGenerationImageKind,
+import { getServerSession } from "@/lib/auth/server";
+import type {
+  AIGenerationImageKind,
+  AIGenerationImageVariant,
 } from "@/lib/bead/aiGeneration";
 import {
-  downloadGenerationImage,
-  getGenerationById,
-} from "@/lib/bead/aiGenerationServer";
+  callAIService,
+  CloudRunServiceError,
+} from "@/lib/server/cloudrun";
 
 export const runtime = "nodejs";
 
@@ -21,11 +21,15 @@ function isImageKind(value: string | null): value is AIGenerationImageKind {
   return value === "source" || value === "ai";
 }
 
+function isImageVariant(value: string | null): value is AIGenerationImageVariant {
+  return value === "original" || value === "display" || value === "thumb";
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const session = await getServerSession();
 
-    if (!user) {
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
@@ -35,9 +39,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const kindParam = request.nextUrl.searchParams.get("kind");
+    const kind = request.nextUrl.searchParams.get("kind");
+    const variantParam = request.nextUrl.searchParams.get("variant");
+    const variant = isImageVariant(variantParam) ? variantParam : "original";
 
-    if (!isImageKind(kindParam)) {
+    if (!isImageKind(kind)) {
       return NextResponse.json(
         {
           success: false,
@@ -47,64 +53,33 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const supabaseAdmin = createSupabaseAdminClient();
-    const generation = await getGenerationById({
-      supabaseAdmin,
-      userId: user.id,
-      generationId: context.params.id,
+    const payload = await callAIService<{
+      contentType: string;
+      etag: string;
+      dataBase64: string;
+    }>(`history/${context.params.id}/image`, {
+      method: "POST",
+      body: {
+        userId: session.userId,
+        kind,
+        variant,
+      },
     });
 
-    if (!generation) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Generation record not found.",
-        },
-        { status: 404 }
-      );
-    }
-
-    const path =
-      kindParam === "source"
-        ? generation.source_image_path
-        : generation.ai_image_path;
-
-    if (!path) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Requested image is not available.",
-        },
-        {
-          status: 404,
-          headers: {
-            "Cache-Control": "private, no-store, max-age=0",
-          },
-        }
-      );
-    }
-
-    const image = await downloadGenerationImage({
-      supabaseAdmin,
-      path,
-    });
-    const contentType = image.type || "application/octet-stream";
-    const etag = `"${Buffer.from(`${kindParam}:${path}`).toString("base64url")}"`;
-
-    if (request.headers.get("if-none-match") === etag) {
+    if (request.headers.get("if-none-match") === payload.etag) {
       return new NextResponse(null, {
         status: 304,
         headers: {
-          ETag: etag,
+          ETag: payload.etag,
           "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
         },
       });
     }
 
-    return new NextResponse(await image.arrayBuffer(), {
+    return new NextResponse(Buffer.from(payload.dataBase64, "base64"), {
       headers: {
-        "Content-Type": contentType,
-        ETag: etag,
+        "Content-Type": payload.contentType || "application/octet-stream",
+        ETag: payload.etag,
         "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
       },
     });
@@ -112,12 +87,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load image.",
+        error: error instanceof Error ? error.message : "Failed to load image.",
       },
-      { status: 500 }
+      {
+        status:
+          error instanceof CloudRunServiceError ? error.status : 500,
+      }
     );
   }
 }

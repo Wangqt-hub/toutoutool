@@ -1,0 +1,12 @@
+{
+  "name": "toutoutool-ai",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  }
+}

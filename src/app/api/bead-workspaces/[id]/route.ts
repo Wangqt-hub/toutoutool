@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
-import { getAuthenticatedUser } from "@/lib/supabase/serverUser";
-import {
-  getBeadWorkspaceById,
-  updateBeadWorkspaceState,
-} from "@/lib/bead/workspacesServer";
+﻿import { NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth/server";
+import { callCloudBaseFunction, CloudBaseFunctionError } from "@/lib/server/cloudbase-functions";
 import type { UpdateBeadWorkspaceStateInput } from "@/lib/bead/workspaces";
+import {
+  type BeadWorkspaceRow,
+  toWorkspaceRecord,
+} from "@/lib/bead/workspacesBackend";
 
 type RouteContext = {
   params: {
@@ -14,9 +15,9 @@ type RouteContext = {
 
 export async function GET(_request: Request, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const session = await getServerSession();
 
-    if (!user) {
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
@@ -26,12 +27,16 @@ export async function GET(_request: Request, context: RouteContext) {
       );
     }
 
-    const workspace = await getBeadWorkspaceById({
-      userId: user.id,
+    const payload = await callCloudBaseFunction<{
+      currentWorkspaceId: string | null;
+      row: BeadWorkspaceRow | null;
+    }>("toutoutool-bead", {
+      action: "getWorkspaceById",
+      userId: session.userId,
       workspaceId: context.params.id,
     });
 
-    if (!workspace) {
+    if (!payload.row) {
       return NextResponse.json(
         {
           success: false,
@@ -43,7 +48,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({
       success: true,
-      data: workspace,
+      data: toWorkspaceRecord(payload.row, payload.currentWorkspaceId),
     });
   } catch (error) {
     return NextResponse.json(
@@ -51,16 +56,19 @@ export async function GET(_request: Request, context: RouteContext) {
         success: false,
         error: error instanceof Error ? error.message : "Failed to load workspace.",
       },
-      { status: 500 }
+      {
+        status:
+          error instanceof CloudBaseFunctionError ? error.status : 500,
+      }
     );
   }
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const session = await getServerSession();
 
-    if (!user) {
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
@@ -75,10 +83,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (
       !input ||
       !Array.isArray(input.completedColorIndexes) ||
-      !(
-        input.selectedColorIndex === null ||
-        typeof input.selectedColorIndex === "number"
-      )
+      !(input.selectedColorIndex === null || typeof input.selectedColorIndex === "number")
     ) {
       return NextResponse.json(
         {
@@ -89,13 +94,17 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const result = await updateBeadWorkspaceState({
-      userId: user.id,
+    const data = await callCloudBaseFunction<{
+      updatedAt: string;
+      lastOpenedAt: string | null;
+    } | null>("toutoutool-bead", {
+      action: "updateWorkspaceState",
+      userId: session.userId,
       workspaceId: context.params.id,
       input,
     });
 
-    if (!result) {
+    if (!data) {
       return NextResponse.json(
         {
           success: false,
@@ -107,7 +116,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data,
     });
   } catch (error) {
     return NextResponse.json(
@@ -116,7 +125,10 @@ export async function PATCH(request: Request, context: RouteContext) {
         error:
           error instanceof Error ? error.message : "Failed to update workspace.",
       },
-      { status: 500 }
+      {
+        status:
+          error instanceof CloudBaseFunctionError ? error.status : 500,
+      }
     );
   }
 }
