@@ -3,11 +3,13 @@
 import type { ReactNode } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { AutoRefreshImage } from "@/components/ui/AutoRefreshImage";
 
 interface BeadImagePreviewCardProps {
   title: string;
   description: string;
   imageUrl?: string | null;
+  onRefreshImageUrl?: () => Promise<string | null | undefined>;
   alt: string;
   badge?: string;
   meta?: string[];
@@ -21,13 +23,14 @@ export function BeadImagePreviewCard({
   title,
   description,
   imageUrl,
+  onRefreshImageUrl,
   alt,
   badge,
   meta,
   fit = "cover",
   actions,
-  emptyTitle = "等待内容",
-  emptyDescription = "完成当前步骤后，这里会显示对应的图片预览。",
+  emptyTitle = "????",
+  emptyDescription = "?????????????????????",
 }: BeadImagePreviewCardProps) {
   return (
     <Card className="border-white/70 bg-white/84 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.06)] sm:p-4 xl:p-5">
@@ -48,8 +51,9 @@ export function BeadImagePreviewCard({
         {imageUrl ? (
           <div className="overflow-hidden rounded-[24px] border border-cream-100 bg-cream-50/70 p-2.5">
             <div className="overflow-hidden rounded-[18px] bg-white">
-              <img
+              <AutoRefreshImage
                 src={imageUrl}
+                onRefreshSrc={onRefreshImageUrl}
                 alt={alt}
                 className={
                   fit === "contain"

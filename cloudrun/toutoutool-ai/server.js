@@ -389,18 +389,42 @@ function buildProxyUrl(generationId, kind, variant = "original") {
 }
 
 async function buildHistoryItems(rows) {
+  const urlMap = await getDownloadUrls(
+    rows.flatMap((row) => {
+      const paths = [
+        buildDisplayImagePath(row.user_id, row.id, "source"),
+        buildThumbnailImagePath(row.user_id, row.id, "source"),
+      ];
+
+      if (row.ai_image_path) {
+        paths.push(buildDisplayImagePath(row.user_id, row.id, "ai"));
+        paths.push(buildThumbnailImagePath(row.user_id, row.id, "ai"));
+      }
+
+      return paths;
+    })
+  );
+
   return rows.map((row) => {
     const sourceImageProxyUrl = buildProxyUrl(row.id, "source", "original");
-    const sourceImageUrl = buildProxyUrl(row.id, "source", "display");
-    const sourceThumbnailUrl = buildProxyUrl(row.id, "source", "thumb");
+    const sourceDisplayPath = buildDisplayImagePath(row.user_id, row.id, "source");
+    const sourceThumbPath = buildThumbnailImagePath(row.user_id, row.id, "source");
+    const sourceImageUrl = urlMap.get(sourceDisplayPath) || sourceImageProxyUrl;
+    const sourceThumbnailUrl = urlMap.get(sourceThumbPath) || sourceImageUrl;
     const aiImageProxyUrl = row.ai_image_path
       ? buildProxyUrl(row.id, "ai", "original")
       : null;
-    const aiImageUrl = row.ai_image_path
-      ? buildProxyUrl(row.id, "ai", "display")
+    const aiDisplayPath = row.ai_image_path
+      ? buildDisplayImagePath(row.user_id, row.id, "ai")
       : null;
-    const aiThumbnailUrl = row.ai_image_path
-      ? buildProxyUrl(row.id, "ai", "thumb")
+    const aiThumbPath = row.ai_image_path
+      ? buildThumbnailImagePath(row.user_id, row.id, "ai")
+      : null;
+    const aiImageUrl = aiDisplayPath
+      ? urlMap.get(aiDisplayPath) || aiImageProxyUrl
+      : null;
+    const aiThumbnailUrl = aiThumbPath
+      ? urlMap.get(aiThumbPath) || aiImageUrl
       : null;
 
     return {
@@ -411,16 +435,16 @@ async function buildHistoryItems(rows) {
       status: row.status,
       statusLabel:
         row.status === "UPLOADING_SOURCE"
-          ? "\u4E0A\u4F20\u539F\u56FE"
+          ? "上传原图"
           : row.status === "PENDING"
-          ? "\u6392\u961F\u4E2D"
+          ? "排队中"
           : row.status === "RUNNING"
-          ? "\u751F\u6210\u4E2D"
+          ? "生成中"
           : row.status === "SAVING_RESULT"
-          ? "\u4FDD\u5B58\u7ED3\u679C"
+          ? "保存结果"
           : row.status === "SUCCEEDED"
-          ? "\u5DF2\u5B8C\u6210"
-          : "\u5931\u8D25",
+          ? "已完成"
+          : "失败",
       progressPercent: row.progress_percent,
       sourceImageUrl,
       sourceImageProxyUrl,

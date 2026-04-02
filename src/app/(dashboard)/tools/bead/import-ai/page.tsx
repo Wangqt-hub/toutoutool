@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBeadWorkspaceLaunch } from "@/components/bead-tool/useBeadWorkspaceLaunch";
 import { BeadImagePreviewCard } from "@/components/bead-tool/BeadImagePreviewCard";
+import { AutoRefreshImage } from "@/components/ui/AutoRefreshImage";
 import {
   BeadWorkflowShell,
   type BeadWorkflowStep,
@@ -183,11 +184,17 @@ function getSmoothedGenerationProgress(
 }
 
 const HISTORY_CACHE_KEY = "bead-ai-history-cache-v1";
+const SIGNED_IMAGE_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
 
 type CachedHistoryPayload = {
   etag: string | null;
   items: AIGenerationHistoryItem[];
+  cachedAt: number;
 };
+
+function isSignedImageCacheFresh(cachedAt: number) {
+  return Date.now() - cachedAt < SIGNED_IMAGE_CACHE_MAX_AGE_MS;
+}
 
 function readHistoryCache(): CachedHistoryPayload | null {
   if (typeof window === "undefined") {
@@ -201,7 +208,9 @@ function readHistoryCache(): CachedHistoryPayload | null {
   }
 
   try {
-    const parsed = JSON.parse(raw) as CachedHistoryPayload;
+    const parsed = JSON.parse(raw) as
+      | CachedHistoryPayload
+      | { etag?: string | null; items?: AIGenerationHistoryItem[] };
 
     if (!Array.isArray(parsed.items)) {
       return null;
@@ -210,19 +219,27 @@ function readHistoryCache(): CachedHistoryPayload | null {
     return {
       etag: parsed.etag ?? null,
       items: parsed.items,
+      cachedAt: "cachedAt" in parsed && typeof parsed.cachedAt === "number" ? parsed.cachedAt : 0,
     };
   } catch {
     return null;
   }
 }
 
-function writeHistoryCache(payload: CachedHistoryPayload) {
+function writeHistoryCache(payload: Omit<CachedHistoryPayload, "cachedAt">) {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.sessionStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(payload));
+  window.sessionStorage.setItem(
+    HISTORY_CACHE_KEY,
+    JSON.stringify({
+      ...payload,
+      cachedAt: Date.now(),
+    })
+  );
 }
+
 
 function ProgressBar({
   progress,
@@ -335,6 +352,9 @@ export default function AIGeneratePage() {
   const imageMetadataCacheRef = useRef<Map<string, ImageMetadata | null>>(
     new Map()
   );
+  const historyItemRefreshPromisesRef = useRef<
+    Map<string, Promise<AIGenerationHistoryItem | null>>
+  >(new Map());
 
   const getDisplayedProgress = useCallback(
     (item: AIGenerationHistoryItem | null | undefined) =>
@@ -542,10 +562,81 @@ export default function AIGeneratePage() {
     [applyLoadedHistory]
   );
 
+  const refreshHistoryItem = useCallback(
+    async (historyId: string) => {
+      const existing = historyItemRefreshPromisesRef.current.get(historyId);
+
+      if (existing) {
+        return existing;
+      }
+
+      const promise = (async () => {
+        const response = await fetch(`/api/ai-generate/history/${historyId}`, {
+          cache: "no-store",
+        });
+        const payload = await readJsonResponse(response);
+        const item = (payload.data as AIGenerationHistoryItem | null) || null;
+
+        if (!item) {
+          return null;
+        }
+
+        setHistoryItems((items) => mergeHistoryItems(items, item));
+
+        if (
+          selectedHistoryIdRef.current === historyId ||
+          activeHistoryId === historyId
+        ) {
+          await restoreHistorySelection(
+            item,
+            item.status === "SUCCEEDED" ? "??????" : "??????"
+          );
+        }
+
+        return item;
+      })()
+        .catch(() => null)
+        .finally(() => {
+          historyItemRefreshPromisesRef.current.delete(historyId);
+        });
+
+      historyItemRefreshPromisesRef.current.set(historyId, promise);
+      return promise;
+    },
+    [activeHistoryId, restoreHistorySelection]
+  );
+
+  const refreshHistoryThumbnailUrl = useCallback(
+    async (historyId: string) => {
+      const item = await refreshHistoryItem(historyId);
+      return item ? getPreferredHistoryThumbnailUrl(item) : null;
+    },
+    [refreshHistoryItem]
+  );
+
+  const refreshHistoryAIImageUrl = useCallback(
+    async (historyId: string) => {
+      const item = await refreshHistoryItem(historyId);
+      return item ? getPreferredAIImageUrl(item) : null;
+    },
+    [refreshHistoryItem]
+  );
+
+  const refreshHistorySourceImageUrl = useCallback(
+    async (historyId: string) => {
+      const item = await refreshHistoryItem(historyId);
+      return item ? getPreferredSourceImageUrl(item) : null;
+    },
+    [refreshHistoryItem]
+  );
+
+
   useEffect(() => {
     const cachedHistory = readHistoryCache();
+    const canHydrateCachedHistory =
+      cachedHistory && isSignedImageCacheFresh(cachedHistory.cachedAt);
 
-    if (cachedHistory) {
+    if (canHydrateCachedHistory) {
       setHistoryEtag(cachedHistory.etag);
       setHistoryLoading(false);
       applyLoadedHistory(cachedHistory.items).catch(() => {
@@ -553,7 +644,7 @@ export default function AIGeneratePage() {
       });
     }
 
-    loadHistory(cachedHistory?.etag ?? null).catch(() => {
+    loadHistory(canHydrateCachedHistory ? cachedHistory?.etag ?? null : null).catch(() => {
       // Error state is already handled in loadHistory.
     });
   }, [applyLoadedHistory, loadHistory]);
@@ -1282,6 +1373,9 @@ export default function AIGeneratePage() {
         <ImageUploadStep
           previewUrl={sourcePreviewUrl}
           previewLabel={sourcePreviewLabel}
+          onRefreshPreviewUrl={
+            selectedHistory ? () => refreshHistorySourceImageUrl(selectedHistory.id) : undefined
+          }
           disabled={isTaskRunning}
           allowReplaceWhenPreviewed={false}
           onImageSelect={(url, file, metadata) => {

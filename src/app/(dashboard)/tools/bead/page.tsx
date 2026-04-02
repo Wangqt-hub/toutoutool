@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Clock3, History, Layers3, PlayCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ImportModeSelector } from "@/components/bead-tool/ImportModeSelector";
+import { AutoRefreshImage } from "@/components/ui/AutoRefreshImage";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -15,11 +16,17 @@ import type {
   BeadWorkspaceSummary,
 } from "@/lib/bead/workspaces";
 
-const WORKSPACE_OVERVIEW_CACHE_KEY = "bead-workspace-overview-cache-v2";
+const WORKSPACE_OVERVIEW_CACHE_KEY = "bead-workspace-overview-cache-v3";
+const SIGNED_IMAGE_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+
+type CachedOverviewPayload = {
+  cachedAt: number;
+  overview: BeadWorkspaceOverview;
+};
 
 function formatDateTime(value: string | null) {
   if (!value) {
-    return "刚刚";
+    return "??";
   }
 
   return new Date(value).toLocaleString("zh-CN", {
@@ -30,7 +37,11 @@ function formatDateTime(value: string | null) {
   });
 }
 
-function readOverviewCache(): BeadWorkspaceOverview | null {
+function isCacheFresh(cachedAt: number) {
+  return Date.now() - cachedAt < SIGNED_IMAGE_CACHE_MAX_AGE_MS;
+}
+
+function readOverviewCache(): CachedOverviewPayload | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -42,13 +53,23 @@ function readOverviewCache(): BeadWorkspaceOverview | null {
   }
 
   try {
-    const parsed = JSON.parse(raw) as BeadWorkspaceOverview;
+    const parsed = JSON.parse(raw) as
+      | CachedOverviewPayload
+      | BeadWorkspaceOverview;
+    const legacyOverview = parsed as BeadWorkspaceOverview;
 
-    if (!parsed || !Array.isArray(parsed.history)) {
-      return null;
+    if ("overview" in parsed && parsed.overview && Array.isArray(parsed.overview.history)) {
+      return parsed;
     }
 
-    return parsed;
+    if (legacyOverview && Array.isArray(legacyOverview.history)) {
+      return {
+        cachedAt: 0,
+        overview: legacyOverview,
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -59,9 +80,14 @@ function writeOverviewCache(overview: BeadWorkspaceOverview) {
     return;
   }
 
+  const payload: CachedOverviewPayload = {
+    cachedAt: Date.now(),
+    overview,
+  };
+
   window.sessionStorage.setItem(
     WORKSPACE_OVERVIEW_CACHE_KEY,
-    JSON.stringify(overview)
+    JSON.stringify(payload)
   );
 }
 
@@ -94,16 +120,28 @@ function promoteWorkspaceToCurrent(
   };
 }
 
+function listOverviewItems(overview: BeadWorkspaceOverview | null) {
+  if (!overview) {
+    return [] as BeadWorkspaceSummary[];
+  }
+
+  return overview.current
+    ? [overview.current, ...overview.history]
+    : [...overview.history];
+}
+
 function WorkspaceSquareThumbnail({
   src,
   alt,
   eager = false,
   containerClassName = "h-32 w-32 sm:h-36 sm:w-36",
+  onRefreshSrc,
 }: {
   src: string | null;
   alt: string;
   eager?: boolean;
   containerClassName?: string;
+  onRefreshSrc?: () => Promise<string | null | undefined>;
 }) {
   if (!src) {
     return (
@@ -119,8 +157,9 @@ function WorkspaceSquareThumbnail({
     <div
       className={`flex shrink-0 items-center justify-center rounded-[28px] border border-cream-100 bg-cream-50 p-3 shadow-sm ${containerClassName}`}
     >
-      <img
+      <AutoRefreshImage
         src={src}
+        onRefreshSrc={onRefreshSrc}
         alt={alt}
         loading={eager ? "eager" : "lazy"}
         decoding="async"
@@ -134,10 +173,12 @@ function WorkspaceSquareThumbnail({
 function CurrentWorkspaceCard({
   workspace,
   onOpen,
+  onRefreshThumbnail,
   loading,
 }: {
   workspace: BeadWorkspaceSummary;
   onOpen: () => void;
+  onRefreshThumbnail?: () => Promise<string | null | undefined>;
   loading?: boolean;
 }) {
   return (
@@ -146,9 +187,10 @@ function CurrentWorkspaceCard({
         <div className="flex shrink-0 items-center justify-center self-stretch bg-cream-50 px-2 py-2 sm:px-4 sm:py-4">
           {workspace.thumbnailUrl ? (
             <div className="flex h-[9.95rem] w-[9.95rem] items-center justify-center rounded-[24px] border border-cream-100 bg-cream-50 p-2 shadow-sm sm:h-full sm:min-h-[12.5rem] sm:w-auto sm:aspect-square sm:rounded-[28px] sm:p-4">
-              <img
+              <AutoRefreshImage
                 src={workspace.thumbnailUrl}
-                alt="当前图纸缩略图"
+                onRefreshSrc={onRefreshThumbnail}
+                alt="???????"
                 loading="eager"
                 decoding="async"
                 fetchPriority="high"
@@ -169,17 +211,17 @@ function CurrentWorkspaceCard({
                 {workspace.name}
               </h3>
               <p className="text-[11px] leading-tight text-slate-500 sm:mt-1 sm:text-xs">
-                {workspace.width} × {workspace.height} · {workspace.brand}
+                {workspace.width} ? {workspace.height} ? {workspace.brand}
               </p>
             </div>
 
             <p className="text-[10px] font-medium leading-tight text-slate-500 sm:hidden">
-              最近打开 {formatDateTime(workspace.lastOpenedAt)}
+              ???? {formatDateTime(workspace.lastOpenedAt)}
             </p>
 
             <div className="hidden rounded-xl bg-cream-50/80 px-2.5 py-2 sm:block sm:rounded-2xl sm:px-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                最近打开
+                ????
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-900">
                 {formatDateTime(workspace.lastOpenedAt)}
@@ -188,7 +230,7 @@ function CurrentWorkspaceCard({
 
             <div className="space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-600 sm:text-xs">
-                <span>豆格完成度</span>
+                <span>?????</span>
                 <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-cream-100 sm:h-2.5">
@@ -211,7 +253,7 @@ function CurrentWorkspaceCard({
               onClick={onOpen}
               disabled={loading}
             >
-              继续制作
+              ????
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
@@ -224,10 +266,12 @@ function CurrentWorkspaceCard({
 function HistoryWorkspaceCard({
   workspace,
   onOpen,
+  onRefreshThumbnail,
   loading,
 }: {
   workspace: BeadWorkspaceSummary;
   onOpen: () => void;
+  onRefreshThumbnail?: () => Promise<string | null | undefined>;
   loading?: boolean;
 }) {
   return (
@@ -235,13 +279,14 @@ function HistoryWorkspaceCard({
       <div className="flex items-stretch gap-4">
         <WorkspaceSquareThumbnail
           src={workspace.thumbnailUrl}
-          alt="历史图纸缩略图"
+          alt="???????"
+          onRefreshSrc={onRefreshThumbnail}
         />
 
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-600">
-              <span>完成进度</span>
+              <span>????</span>
               <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
             </div>
             <div className="h-2.5 overflow-hidden rounded-full bg-cream-100">
@@ -262,7 +307,7 @@ function HistoryWorkspaceCard({
             onClick={onOpen}
             disabled={loading}
           >
-            打开图纸
+            ????
           </Button>
         </div>
       </div>
@@ -276,6 +321,7 @@ export default function BeadToolPage() {
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const overviewRefreshPromiseRef = useRef<Promise<BeadWorkspaceOverview | null> | null>(null);
 
   const loadOverview = useCallback(async (options?: { background?: boolean }) => {
     if (!options?.background) {
@@ -288,8 +334,10 @@ export default function BeadToolPage() {
       const nextOverview = await fetchBeadWorkspaceOverview();
       setOverview(nextOverview);
       writeOverviewCache(nextOverview);
+      return nextOverview;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "加载拼豆工作台历史失败。");
+      setError(cause instanceof Error ? cause.message : "????????????");
+      return null;
     } finally {
       if (!options?.background) {
         setLoading(false);
@@ -297,16 +345,38 @@ export default function BeadToolPage() {
     }
   }, []);
 
+  const refreshOverviewSignedUrls = useCallback(async () => {
+    if (overviewRefreshPromiseRef.current) {
+      return overviewRefreshPromiseRef.current;
+    }
+
+    const promise = loadOverview({ background: true }).finally(() => {
+      overviewRefreshPromiseRef.current = null;
+    });
+
+    overviewRefreshPromiseRef.current = promise;
+    return promise;
+  }, [loadOverview]);
+
+  const refreshWorkspaceThumbnailSrc = useCallback(
+    async (workspaceId: string) => {
+      const nextOverview = await refreshOverviewSignedUrls();
+      return listOverviewItems(nextOverview).find((item) => item.id === workspaceId)?.thumbnailUrl ?? null;
+    },
+    [refreshOverviewSignedUrls]
+  );
+
   useEffect(() => {
     const cachedOverview = readOverviewCache();
+    const canHydrate = cachedOverview && isCacheFresh(cachedOverview.cachedAt);
 
-    if (cachedOverview) {
-      setOverview(cachedOverview);
+    if (canHydrate) {
+      setOverview(cachedOverview.overview);
       setLoading(false);
     }
 
     void loadOverview({
-      background: Boolean(cachedOverview),
+      background: Boolean(canHydrate),
     });
   }, [loadOverview]);
 
@@ -331,7 +401,7 @@ export default function BeadToolPage() {
 
         router.push(`/tools/bead/bead-mode?workspace=${workspace.id}`);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "打开拼豆工作台失败。");
+        setError(cause instanceof Error ? cause.message : "??????????");
       } finally {
         setOpeningId(null);
       }
@@ -347,7 +417,7 @@ export default function BeadToolPage() {
             Bead Tool
           </p>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            拼豆工作台
+            ?????
           </h2>
         </div>
         <Button
@@ -356,7 +426,7 @@ export default function BeadToolPage() {
           size="sm"
           onClick={() => void loadOverview()}
         >
-          刷新
+          ??
         </Button>
       </div>
 
@@ -364,11 +434,12 @@ export default function BeadToolPage() {
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <PlayCircle className="h-5 w-5 text-accent-brown" />
-            <h3 className="text-lg font-semibold text-slate-900">当前草稿</h3>
+            <h3 className="text-lg font-semibold text-slate-900">????</h3>
           </div>
           <CurrentWorkspaceCard
             workspace={overview.current}
             onOpen={() => openWorkspace(overview.current!)}
+            onRefreshThumbnail={() => refreshWorkspaceThumbnailSrc(overview.current!.id)}
             loading={openingId === overview.current.id}
           />
         </section>
@@ -377,14 +448,14 @@ export default function BeadToolPage() {
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <History className="h-5 w-5 text-accent-brown" />
-          <h3 className="text-lg font-semibold text-slate-900">历史图纸</h3>
+          <h3 className="text-lg font-semibold text-slate-900">????</h3>
         </div>
 
         {loading ? (
           <Card className="border-white/80 bg-white/92 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
             <div className="flex items-center gap-3 text-sm text-slate-500">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-brown/25 border-t-accent-brown" />
-              正在加载历史工作台...
+              ?????????...
             </div>
           </Card>
         ) : overview?.history.length ? (
@@ -394,6 +465,7 @@ export default function BeadToolPage() {
                 key={workspace.id}
                 workspace={workspace}
                 onOpen={() => openWorkspace(workspace)}
+                onRefreshThumbnail={() => refreshWorkspaceThumbnailSrc(workspace.id)}
                 loading={openingId === workspace.id}
               />
             ))}
@@ -403,7 +475,7 @@ export default function BeadToolPage() {
             <div className="flex items-start gap-3">
               <Clock3 className="mt-0.5 h-5 w-5 text-slate-400" />
               <div>
-                <p className="text-sm font-medium text-slate-700">还没有历史图纸</p>
+                <p className="text-sm font-medium text-slate-700">???????</p>
               </div>
             </div>
           </Card>
@@ -418,7 +490,7 @@ export default function BeadToolPage() {
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">新建图纸</h3>
+          <h3 className="text-lg font-semibold text-slate-900">????</h3>
         </div>
 
         <ImportModeSelector />
