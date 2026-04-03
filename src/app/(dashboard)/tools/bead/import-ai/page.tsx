@@ -29,6 +29,7 @@ import { PatternSettings } from "@/components/bead-tool/PatternSettings";
 import { StyleSelector } from "@/components/bead-tool/StyleSelector";
 import {
   AI_GENERATION_STATUS_LABELS,
+  buildAIGenerationImageUrl,
   isAIGenerationActive,
   type AIGenerationHistoryItem,
 } from "@/lib/bead/aiGeneration";
@@ -908,12 +909,12 @@ export default function AIGeneratePage() {
   ]);
 
   const handleCreatePattern = useCallback(async () => {
-    const aiImageUrl = selectedCompletedHistory
-      ? selectedCompletedHistory.aiImageProxyUrl ||
-        getPreferredAIImageUrl(selectedCompletedHistory)
-      : null;
+    const historyId = selectedCompletedHistory?.id ?? null;
+    const processingImageUrl = historyId
+      ? buildAIGenerationImageUrl(historyId, "ai", "display")
+      : selectedCompletedHistory?.aiImageProxyUrl ?? null;
 
-    if (!aiImageUrl) {
+    if (!processingImageUrl) {
       setError("请先选择一条已完成的 AI 记录。");
       return;
     }
@@ -931,7 +932,7 @@ export default function AIGeneratePage() {
       };
 
       const result = await processImage(
-        aiImageUrl,
+        processingImageUrl,
         settings,
         selectedPalette
       );
