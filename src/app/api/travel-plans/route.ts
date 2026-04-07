@@ -1,17 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth/server";
-import { callCloudBaseFunction } from "@/lib/server/cloudbase-functions";
-
-type TravelPlanRow = {
-  id: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
-  budget: string;
-  preferences: string[] | null;
-  itinerary_json: unknown;
-  created_at: string;
-};
+import { createTravelPlan, listTravelPlans } from "@/lib/server/travel-plans";
+import type { TravelPlanMutationInput } from "@/lib/travel/types";
 
 export async function GET() {
   try {
@@ -27,11 +17,7 @@ export async function GET() {
       );
     }
 
-    const data = await callCloudBaseFunction<TravelPlanRow[]>("toutoutool-user", {
-      action: "listTravelPlans",
-      userId: session.userId,
-      phoneNumber: session.phoneNumber,
-    });
+    const data = await listTravelPlans(session);
 
     return NextResponse.json({
       success: true,
@@ -65,14 +51,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const payload = (await request.json()) as Record<string, unknown>;
-
-    const data = await callCloudBaseFunction<TravelPlanRow>("toutoutool-user", {
-      action: "createTravelPlan",
-      userId: session.userId,
-      phoneNumber: session.phoneNumber,
-      payload,
-    });
+    const payload = ((await request.json().catch(() => ({}))) || {}) as TravelPlanMutationInput;
+    const data = await createTravelPlan(session, payload);
 
     return NextResponse.json({
       success: true,

@@ -1,0 +1,1714 @@
+"use client";
+
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { clsx } from "clsx";
+import {
+  AlertCircle,
+  CalendarDays,
+  Check,
+  Coffee,
+  CheckCircle2,
+  ChevronLeft,
+  Clock3,
+  Compass,
+  Link2,
+  Loader2,
+  MapPinned,
+  Pencil,
+  Plus,
+  Save,
+  Sparkles,
+  Trash2,
+  UtensilsCrossed,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { readTravelApiResponse } from "@/lib/travel/client";
+import {
+  type BudgetLevel,
+  type Itinerary,
+  type ItineraryItem,
+  type ItineraryItemKind,
+  type PreferenceKey,
+  type TravelPlanArchive,
+  TRAVEL_BUDGET_OPTIONS,
+  TRAVEL_PREFERENCE_OPTIONS,
+} from "@/lib/travel/types";
+import {
+  createEmptyItineraryItem,
+  getBudgetLabel,
+  getPlanStatusLabel,
+  getPlanStatusTone,
+  getTravelDayCount,
+  inferItineraryItemKind,
+  isCompleteTravelTime,
+  normalizeTravelItinerary,
+  sortTravelItineraryItems,
+  toEditableTravelSnapshot,
+} from "@/lib/travel/utils";
+
+type Props = {
+  travelPlanId: string;
+};
+
+type OverlayTone = "running" | "success" | "error";
+type VisibleTimelineKind = Exclude<ItineraryItemKind, "shopping">;
+
+const DAY_SURFACES = [
+  {
+    shell:
+      "border-[#e9dccd] bg-[linear-gradient(180deg,rgba(255,252,246,0.98),rgba(243,232,218,0.98))]",
+    badge: "bg-[#1f4254] text-white",
+    line: "from-[#1f4254] via-[#b78960] to-transparent",
+    dot: "border-[#f7efe2] bg-[#1f4254]",
+    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.58),transparent_60%)]",
+  },
+  {
+    shell:
+      "border-[#dfe4df] bg-[linear-gradient(180deg,rgba(248,250,247,0.98),rgba(229,237,232,0.98))]",
+    badge: "bg-[#3d5c54] text-white",
+    line: "from-[#3d5c54] via-[#9bb0a6] to-transparent",
+    dot: "border-[#f4f7f4] bg-[#3d5c54]",
+    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.62),transparent_62%)]",
+  },
+  {
+    shell:
+      "border-[#eadfd9] bg-[linear-gradient(180deg,rgba(255,250,248,0.98),rgba(244,228,221,0.98))]",
+    badge: "bg-[#7d4d47] text-white",
+    line: "from-[#7d4d47] via-[#d5a798] to-transparent",
+    dot: "border-[#f9f1ee] bg-[#7d4d47]",
+    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.58),transparent_62%)]",
+  },
+];
+
+const TIMELINE_CARD_META = {
+  food: {
+    label: "美食",
+    icon: UtensilsCrossed,
+    shell:
+      "border-[#f0d6c4] bg-[linear-gradient(180deg,rgba(255,249,245,0.98),rgba(255,239,230,0.98))]",
+    chip: "bg-[#8c4f34] text-white",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(230,164,124,0.18),transparent_52%)]",
+  },
+  sightseeing: {
+    label: "景点",
+    icon: MapPinned,
+    shell:
+      "border-[#d3e2e6] bg-[linear-gradient(180deg,rgba(247,251,252,0.98),rgba(232,244,247,0.98))]",
+    chip: "bg-[#2d5d6f] text-white",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(117,173,191,0.18),transparent_52%)]",
+  },
+  activity: {
+    label: "活动",
+    icon: Compass,
+    shell:
+      "border-[#e2dfcf] bg-[linear-gradient(180deg,rgba(255,253,246,0.98),rgba(247,242,225,0.98))]",
+    chip: "bg-[#6e6040] text-white",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(204,190,124,0.16),transparent_52%)]",
+  },
+  rest: {
+    label: "休息",
+    icon: Coffee,
+    shell:
+      "border-[#dccfbf] bg-[linear-gradient(180deg,rgba(255,251,247,0.98),rgba(244,235,224,0.98))]",
+    chip: "bg-[#86624b] text-white",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(193,155,121,0.18),transparent_52%)]",
+  },
+} satisfies Record<
+  VisibleTimelineKind,
+  {
+    label: string;
+    icon: typeof Compass;
+    shell: string;
+    chip: string;
+    glow: string;
+  }
+>;
+
+const TIMELINE_EDIT_KIND_OPTIONS: VisibleTimelineKind[] = [
+  "food",
+  "sightseeing",
+  "activity",
+  "rest",
+];
+
+function getVisibleTimelineKind(kind: ItineraryItemKind): VisibleTimelineKind {
+  return kind === "shopping" ? "activity" : kind;
+}
+
+function formatDetailTime(value: string | null) {
+  if (!value) {
+    return "未生成";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatDateChip(value: string) {
+  if (!value) {
+    return "--";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
+}
+
+function buildSavePayload(plan: TravelPlanArchive) {
+  return {
+    destination: plan.destination,
+    startDate: plan.startDate,
+    endDate: plan.endDate,
+    budget: plan.budget,
+    preferences: plan.preferences,
+    notes: plan.notes,
+    planStatus: plan.planStatus,
+    sourceLinks: plan.sourceLinks,
+    itinerary: plan.itinerary,
+    generationModel: plan.generationModel,
+    generationError: plan.generationError,
+    lastGeneratedAt: plan.lastGeneratedAt,
+  };
+}
+
+function clampDates(startDate: string, endDate: string) {
+  if (!startDate) {
+    return { startDate, endDate };
+  }
+
+  if (!endDate || endDate < startDate) {
+    return { startDate, endDate: startDate };
+  }
+
+  return { startDate, endDate };
+}
+
+function countTimelineItems(itinerary: Itinerary) {
+  return itinerary.days.reduce((count, day) => count + day.items.length, 0);
+}
+
+function hasTimelineContent(itinerary: Itinerary) {
+  return itinerary.days.some(
+    (day) =>
+      day.theme.trim().length > 0 ||
+      day.items.some(
+        (item) =>
+          item.startTime.trim() ||
+          item.endTime.trim() ||
+          item.placeName.trim() ||
+          item.districtOrArea.trim() ||
+          item.summary.trim() ||
+          item.transport.trim() ||
+          item.estimatedCost.trim() ||
+          item.tips.trim()
+      )
+  );
+}
+
+function getDisplayDestination(value: string) {
+  const trimmed = value.trim();
+  return !trimmed || trimmed === "未命名旅程" ? "新的旅程" : trimmed;
+}
+
+function getOverlayMeta(progress: number, tone: OverlayTone) {
+  if (tone === "success") {
+    return { title: "行程已生成", detail: "时间轴已经回到工作台，马上就能继续改。" };
+  }
+
+  if (tone === "error") {
+    return { title: "生成中断", detail: "正在返回工作台，你可以修改条件后再试一次。" };
+  }
+
+  if (progress < 26) {
+    return { title: "同步旅行档案", detail: "正在整理地点、时间和偏好。" };
+  }
+
+  if (progress < 54) {
+    return { title: "提炼攻略信息", detail: "把攻略内容压缩成可用线索。" };
+  }
+
+  if (progress < 82) {
+    return { title: "生成时间轴", detail: "Qwen 正在串联每天的安排。" };
+  }
+
+  return { title: "润色细节", detail: "补齐交通、花费和提醒。" };
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function resizeTextarea(element: HTMLTextAreaElement | null) {
+  if (!element) {
+    return;
+  }
+
+  element.style.height = "0px";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
+function LabeledAutoField({
+  label,
+  value,
+  onChange,
+  readOnly,
+  minRows = 1,
+  emptyHint = "未填写",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  readOnly: boolean;
+  minRows?: number;
+  emptyHint?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+
+    if (!element) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      resizeTextarea(element);
+    });
+
+    const observer = new ResizeObserver(() => {
+      resizeTextarea(element);
+    });
+
+    observer.observe(element);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [value, readOnly]);
+
+  const shellClassName = clsx(
+    "grid grid-cols-[48px_minmax(0,1fr)] items-start gap-2.5 rounded-[1.2rem] border px-3 py-2.5 transition sm:grid-cols-[58px_minmax(0,1fr)]",
+    readOnly
+      ? "border-white/40 bg-white/42"
+      : "border-[#dcc6b2] bg-white shadow-[0_12px_28px_rgba(79,54,27,0.08)]"
+  );
+
+  return (
+    <div className={shellClassName}>
+      <div className="pt-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+        {label}
+      </div>
+
+      {readOnly && !value.trim() ? (
+        <div className="min-h-[36px] py-1.5 text-sm leading-6 text-slate-400">
+          {emptyHint}
+        </div>
+      ) : (
+        <textarea
+          ref={ref}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onInput={(event) => resizeTextarea(event.currentTarget)}
+          readOnly={readOnly}
+          rows={minRows}
+          aria-label={label}
+          className="min-h-[36px] w-full resize-none overflow-hidden bg-transparent px-0 py-1.5 text-sm leading-6 text-slate-700 outline-none"
+        />
+      )}
+    </div>
+  );
+}
+
+function SourcePreview({
+  source,
+  onChange,
+  onRemove,
+}: {
+  source: TravelPlanArchive["sourceLinks"][number];
+  onChange: (value: string) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[1.9rem] border border-[#ebdfd0] bg-[#fffaf2] shadow-[0_18px_44px_rgba(83,56,28,0.06)]">
+      {source.coverImage ? (
+        <div
+          className="h-28 w-full bg-cover bg-center"
+          style={{
+            backgroundImage: `linear-gradient(180deg, rgba(16,24,40,0.08), rgba(16,24,40,0.28)), url("${source.coverImage}")`,
+          }}
+        />
+      ) : null}
+
+      <div className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={clsx(
+                  "rounded-full px-2.5 py-1 text-[11px] font-medium",
+                  source.status === "error"
+                    ? "bg-amber-100 text-amber-900"
+                    : "bg-emerald-100 text-emerald-800"
+                )}
+              >
+                {source.status === "error" ? "解析失败" : "已解析"}
+              </span>
+              <span className="text-xs text-slate-400">
+                {formatDetailTime(source.fetchedAt)}
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              <p className="line-clamp-2 text-sm font-semibold text-slate-900">
+                {source.title || "未识别标题"}
+              </p>
+              <p className="break-all text-xs leading-5 text-slate-500">
+                {source.url}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:text-rose-600"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+
+        {source.excerpt ? (
+          <p className="text-sm leading-6 text-slate-600">{source.excerpt}</p>
+        ) : null}
+
+        {source.status === "error" && source.error ? (
+          <div className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-900">
+            <AlertCircle className="h-3.5 w-3.5" />
+            {source.error}
+          </div>
+        ) : null}
+
+        <textarea
+          value={source.manualSummary}
+          onChange={(event) => onChange(event.target.value)}
+          rows={3}
+          placeholder="这篇攻略里你真正想保留什么"
+          className="w-full resize-none rounded-[1.3rem] border border-[#eadfce] bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-slate-400"
+        />
+      </div>
+    </div>
+  );
+}
+
+function GenerationOverlay({
+  visible,
+  progress,
+  tone,
+  model,
+}: {
+  visible: boolean;
+  progress: number;
+  tone: OverlayTone;
+  model: string;
+}) {
+  const meta = getOverlayMeta(progress, tone);
+
+  return (
+    <AnimatePresence>
+      {visible ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-[rgba(16,13,11,0.72)] backdrop-blur-xl"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(247,215,165,0.24),transparent_42%),radial-gradient(circle_at_bottom,rgba(67,110,115,0.2),transparent_32%)]" />
+
+          <div className="relative flex min-h-screen items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ duration: 0.28, ease: "easeOut" }}
+              className="w-full max-w-sm overflow-hidden rounded-[2.4rem] border border-white/12 bg-[linear-gradient(180deg,rgba(28,24,22,0.9),rgba(23,21,20,0.96))] p-6 text-white shadow-[0_32px_120px_rgba(0,0,0,0.45)]"
+            >
+              <div className="relative flex h-24 items-center justify-center">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 7, ease: "linear", repeat: Infinity }}
+                  className="absolute h-24 w-24 rounded-full border border-white/12"
+                />
+                <motion.div
+                  animate={{ rotate: -360 }}
+                  transition={{ duration: 5, ease: "linear", repeat: Infinity }}
+                  className="absolute h-16 w-16 rounded-full border border-dashed border-[#f3d4a2]/70"
+                />
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
+                  {tone === "success" ? (
+                    <CheckCircle2 className="h-6 w-6 text-[#f8ddb0]" />
+                  ) : tone === "error" ? (
+                    <AlertCircle className="h-6 w-6 text-[#ffcfaa]" />
+                  ) : (
+                    <Loader2 className="h-6 w-6 animate-spin text-[#f8ddb0]" />
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-2 text-center">
+                <p className="text-[11px] uppercase tracking-[0.34em] text-white/48">
+                  Qwen Planning
+                </p>
+                <h2 className="text-[1.75rem] font-black tracking-[-0.05em] text-white">
+                  {meta.title}
+                </h2>
+                <p className="text-sm leading-6 text-white/68">{meta.detail}</p>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                  <motion.div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#f8ddb0_0%,#c9e3dc_100%)]"
+                    animate={{ width: `${progress}%` }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-white/56">
+                  <span>{model}</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+export function TravelWorkspace({ travelPlanId }: Props) {
+  const router = useRouter();
+  const [savedPlan, setSavedPlan] = useState<TravelPlanArchive | null>(null);
+  const [plan, setPlan] = useState<TravelPlanArchive | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [addingSource, setAddingSource] = useState(false);
+  const [showGenerationOverlay, setShowGenerationOverlay] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationTone, setGenerationTone] = useState<OverlayTone>("running");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadPlan() {
+      try {
+        const data = await readTravelApiResponse<TravelPlanArchive>(
+          await fetch(`/api/travel-plans/${travelPlanId}`, {
+            cache: "no-store",
+          })
+        );
+
+        setSavedPlan(data);
+        setPlan(data);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "旅行档案加载失败。");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadPlan();
+  }, [travelPlanId]);
+
+  useEffect(() => {
+    if (!generating) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setGenerationProgress((current) => {
+        if (current >= 92) {
+          return current;
+        }
+
+        if (current < 24) {
+          return Math.min(current + 8, 92);
+        }
+
+        if (current < 58) {
+          return Math.min(current + 5, 92);
+        }
+
+        return Math.min(current + 3, 92);
+      });
+    }, 520);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [generating]);
+
+  const isDirty = useMemo(() => {
+    if (!plan || !savedPlan) {
+      return false;
+    }
+
+    return toEditableTravelSnapshot(plan) !== toEditableTravelSnapshot(savedPlan);
+  }, [plan, savedPlan]);
+
+  useEffect(() => {
+    if (!isDirty) {
+      return undefined;
+    }
+
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [isDirty]);
+
+  function updatePlan(mutator: (current: TravelPlanArchive) => TravelPlanArchive) {
+    setPlan((current) => (current ? mutator(current) : current));
+  }
+
+  function setItemEditing(itemId: string, editing: boolean) {
+    setEditingItemId(editing ? itemId : null);
+  }
+
+  function updateDates(nextStart: string, nextEnd: string) {
+    updatePlan((current) => {
+      const { startDate, endDate } = clampDates(nextStart, nextEnd);
+
+      return {
+        ...current,
+        startDate,
+        endDate,
+        itinerary: normalizeTravelItinerary(current.itinerary, startDate, endDate),
+      };
+    });
+  }
+
+  function updateBudget(value: BudgetLevel) {
+    updatePlan((current) => ({
+      ...current,
+      budget: value,
+    }));
+  }
+
+  function togglePreference(key: PreferenceKey) {
+    updatePlan((current) => {
+      const nextPreferences = current.preferences.includes(key)
+        ? current.preferences.filter((item) => item !== key)
+        : [...current.preferences, key];
+
+      return {
+        ...current,
+        preferences: nextPreferences.length > 0 ? nextPreferences : [key],
+      };
+    });
+  }
+
+  function updateItinerary(mutator: (current: Itinerary) => Itinerary) {
+    updatePlan((current) => ({
+      ...current,
+      itinerary: mutator(current.itinerary),
+    }));
+  }
+
+  function addTimelineItem(dayIndex: number) {
+    const nextItem = createEmptyItineraryItem();
+
+    updateItinerary((current) => ({
+      ...current,
+      days: current.days.map((day, index) =>
+        index === dayIndex
+          ? {
+              ...day,
+              items: [nextItem, ...day.items],
+            }
+          : day
+      ),
+    }));
+
+    setItemEditing(nextItem.id, true);
+  }
+
+  function removeTimelineItem(dayIndex: number, itemId: string) {
+    updateItinerary((current) => ({
+      ...current,
+      days: current.days.map((day, index) =>
+        index === dayIndex
+          ? {
+              ...day,
+              items: day.items.filter((item) => item.id !== itemId),
+            }
+          : day
+      ),
+    }));
+    setEditingItemId((current) => (current === itemId ? null : current));
+  }
+
+  function updateTimelineItem(
+    dayIndex: number,
+    itemId: string,
+    field: keyof ItineraryItem,
+    value: string | string[]
+  ) {
+    updateItinerary((current) => ({
+      ...current,
+      days: current.days.map((day, index) =>
+        index === dayIndex
+          ? (() => {
+              const nextItems = day.items.map((item) =>
+                item.id === itemId
+                  ? {
+                      ...item,
+                      [field]: value,
+                    }
+                  : item
+              );
+              const shouldSort =
+                field !== "startTime" &&
+                field !== "endTime"
+                  ? true
+                  : typeof value !== "string" ||
+                    value === "" ||
+                    isCompleteTravelTime(value);
+
+              return {
+                ...day,
+                items: shouldSort ? sortTravelItineraryItems(nextItems) : nextItems,
+              };
+            })()
+          : day
+      ),
+    }));
+  }
+
+  function updateTimelineKind(
+    dayIndex: number,
+    itemId: string,
+    kind: ItineraryItemKind
+  ) {
+    updateTimelineItem(dayIndex, itemId, "kind", kind);
+  }
+
+  function updateSourceField(sourceId: string, value: string) {
+    updatePlan((current) => ({
+      ...current,
+      sourceLinks: current.sourceLinks.map((source) =>
+        source.id === sourceId
+          ? {
+              ...source,
+              manualSummary: value,
+            }
+          : source
+      ),
+    }));
+  }
+
+  function removeSource(sourceId: string) {
+    updatePlan((current) => ({
+      ...current,
+      sourceLinks: current.sourceLinks.filter((source) => source.id !== sourceId),
+    }));
+  }
+
+  async function handleSave(silent = false) {
+    if (!plan) {
+      return null;
+    }
+
+    const draftSnapshot = plan;
+    setSaving(true);
+    setError("");
+    if (!silent) {
+      setMessage("");
+    }
+
+    try {
+      const data = await readTravelApiResponse<TravelPlanArchive>(
+        await fetch(`/api/travel-plans/${travelPlanId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buildSavePayload(plan)),
+        })
+      );
+
+      const latest =
+        (await readTravelApiResponse<TravelPlanArchive>(
+          await fetch(`/api/travel-plans/${travelPlanId}`, {
+            cache: "no-store",
+          })
+        ).catch(() => null)) || data;
+
+      const nextPlan = {
+        ...draftSnapshot,
+        ...latest,
+        sourceLinks: latest.sourceLinks,
+        itinerary: latest.itinerary,
+        preferences: latest.preferences,
+      };
+
+      setSavedPlan(nextPlan);
+      setPlan(nextPlan);
+
+      if (!silent) {
+        setMessage("已同步到 CloudBase。");
+      }
+
+      return nextPlan;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存失败。");
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleGenerate() {
+    if (!plan) {
+      return;
+    }
+
+    const destination = plan.destination.trim();
+
+    if (!destination || destination === "未命名旅程") {
+      setError("先填入旅行地点，再开始生成。");
+      return;
+    }
+
+    const readyPlan = isDirty ? await handleSave(true) : plan;
+
+    if (!readyPlan) {
+      return;
+    }
+
+    setGenerating(true);
+    setShowGenerationOverlay(true);
+    setGenerationTone("running");
+    setGenerationProgress(10);
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await readTravelApiResponse<TravelPlanArchive>(
+        await fetch(`/api/travel-plans/${travelPlanId}/generate`, {
+          method: "POST",
+        })
+      );
+
+      setSavedPlan(data);
+      setPlan(data);
+      setGenerationTone("success");
+      setGenerationProgress(100);
+      setMessage("Qwen 已生成新时间轴，现在可以继续编辑。");
+      await delay(420);
+    } catch (generateError) {
+      setGenerationTone("error");
+      setGenerationProgress(100);
+      setError(
+        generateError instanceof Error ? generateError.message : "生成行程失败。"
+      );
+      await delay(520);
+    } finally {
+      setGenerating(false);
+      setShowGenerationOverlay(false);
+      setGenerationProgress(0);
+    }
+  }
+
+  async function handleAddSource() {
+    const nextUrl = sourceUrl.trim();
+
+    if (!nextUrl) {
+      setError("请先贴一个小红书链接。");
+      return;
+    }
+
+    setAddingSource(true);
+    setError("");
+    setMessage("");
+
+    try {
+      if (isDirty) {
+        const saved = await handleSave(true);
+
+        if (!saved) {
+          return;
+        }
+      }
+
+      const data = await readTravelApiResponse<TravelPlanArchive>(
+        await fetch(`/api/travel-plans/${travelPlanId}/sources`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: nextUrl,
+          }),
+        })
+      );
+
+      setSavedPlan(data);
+      setPlan(data);
+      setSourceUrl("");
+      setMessage("攻略已入档。");
+    } catch (sourceError) {
+      setError(
+        sourceError instanceof Error ? sourceError.message : "攻略链接解析失败。"
+      );
+    } finally {
+      setAddingSource(false);
+    }
+  }
+
+  function handleBack() {
+    if (isDirty && !window.confirm("还有未保存的修改，确定先离开吗？")) {
+      return;
+    }
+
+    router.push("/tools/travel");
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="inline-flex items-center gap-3 rounded-full bg-white/80 px-4 py-2 text-sm text-slate-600 shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          正在加载旅行工作台…
+        </div>
+      </div>
+    );
+  }
+
+  if (!plan) {
+    return (
+      <div className="rounded-[2rem] border border-rose-200 bg-rose-50 px-6 py-8 text-sm text-rose-700">
+        {error || "旅行档案不存在。"}
+      </div>
+    );
+  }
+
+  const dayCount = getTravelDayCount(plan.startDate, plan.endDate);
+  const visibleTimeline = hasTimelineContent(plan.itinerary);
+  const totalItems = countTimelineItems(plan.itinerary);
+  const displayDestination = getDisplayDestination(plan.destination);
+  return (
+    <>
+      <GenerationOverlay
+        visible={showGenerationOverlay}
+        progress={generationProgress}
+        tone={generationTone}
+        model={plan.generationModel || "qwen3.6-plus"}
+      />
+
+      <div className="space-y-5 pb-28 xl:pb-10">
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.42, ease: "easeOut" }}
+          className="relative overflow-hidden rounded-[2.3rem] border border-[#ead7c4] bg-[linear-gradient(145deg,#17252f_0%,#243948_42%,#56706d_100%)] px-5 py-5 text-white shadow-[0_30px_90px_rgba(19,25,32,0.22)] sm:px-6"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(246,214,171,0.22),transparent_28%)]" />
+
+          <div className="relative space-y-5">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white/88 transition hover:bg-white/16"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                返回
+              </button>
+
+              <span
+                className={clsx(
+                  "rounded-full px-3 py-1 text-[11px] font-medium",
+                  getPlanStatusTone(plan.planStatus)
+                )}
+              >
+                {getPlanStatusLabel(plan.planStatus)}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-white/50">
+                Trip Workspace
+              </p>
+              <h1 className="text-[2.6rem] font-black tracking-[-0.06em] text-white sm:text-[3.4rem]">
+                {displayDestination}
+              </h1>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
+                <div className="inline-flex items-center gap-2 text-xs text-white/64">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  日期
+                </div>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {formatDateChip(plan.startDate)} - {formatDateChip(plan.endDate)}
+                </p>
+              </div>
+
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
+                <div className="inline-flex items-center gap-2 text-xs text-white/64">
+                  <Clock3 className="h-3.5 w-3.5" />
+                  计划
+                </div>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {visibleTimeline ? `${totalItems} 个节点` : `${dayCount} 天待排`}
+                </p>
+              </div>
+
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
+                <div className="inline-flex items-center gap-2 text-xs text-white/64">
+                  <Link2 className="h-3.5 w-3.5" />
+                  攻略
+                </div>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {plan.sourceLinks.length} 条来源
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.section>
+
+        {message ? (
+          <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {message}
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="rounded-[1.4rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        ) : null}
+
+        <section className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <aside className="order-1 space-y-4 xl:sticky xl:top-24 xl:self-start">
+            <div className="overflow-hidden rounded-[2.1rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf8_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(79,54,27,0.07)]">
+              <div className="border-b border-[#eadfce] px-5 py-4">
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
+                  Setup
+                </p>
+                <h2 className="mt-2 text-[1.55rem] font-black tracking-[-0.04em] text-slate-900">
+                  基础设置
+                </h2>
+              </div>
+
+              <div className="space-y-4 px-5 py-5">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-500">地点</label>
+                  <input
+                    value={plan.destination === "未命名旅程" ? "" : plan.destination}
+                    onChange={(event) =>
+                      updatePlan((current) => ({
+                        ...current,
+                        destination: event.target.value,
+                      }))
+                    }
+                    placeholder="例如：东京 / 上海 / 香港"
+                    className="w-full rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-slate-500">开始</label>
+                    <input
+                      type="date"
+                      value={plan.startDate}
+                      onChange={(event) =>
+                        updateDates(event.target.value, plan.endDate)
+                      }
+                      className="w-full rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-slate-500">结束</label>
+                    <input
+                      type="date"
+                      value={plan.endDate}
+                      onChange={(event) =>
+                        updateDates(plan.startDate, event.target.value)
+                      }
+                      className="w-full rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-slate-500">预算</label>
+                    <span className="text-[11px] text-slate-400">选填</span>
+                  </div>
+
+                  <div className="grid gap-2">
+                    {TRAVEL_BUDGET_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => updateBudget(option.value)}
+                        className={clsx(
+                          "rounded-[1.35rem] border px-4 py-3 text-left transition",
+                          plan.budget === option.value
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-[#eadfce] bg-white text-slate-700 hover:border-slate-400"
+                        )}
+                      >
+                        <p className="text-sm font-semibold">{option.label}</p>
+                        <p
+                          className={clsx(
+                            "mt-1 text-xs leading-5",
+                            plan.budget === option.value
+                              ? "text-white/70"
+                              : "text-slate-500"
+                          )}
+                        >
+                          {option.blurb}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-500">偏好</label>
+                  <div className="flex flex-wrap gap-2">
+                    {TRAVEL_PREFERENCE_OPTIONS.map((item) => {
+                      const active = plan.preferences.includes(item.key);
+
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => togglePreference(item.key)}
+                          className={clsx(
+                            "rounded-full border px-3 py-1.5 text-sm transition",
+                            active
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-[#eadfce] bg-white text-slate-600 hover:border-slate-400"
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-500">补充说明</label>
+                  <textarea
+                    value={plan.notes}
+                    onChange={(event) =>
+                      updatePlan((current) => ({
+                        ...current,
+                        notes: event.target.value,
+                      }))
+                    }
+                    rows={4}
+                    placeholder="同行人、作息、必须去 / 不想去的点"
+                    className="w-full resize-none rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-slate-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-[2.1rem] border border-[#eadfce] bg-white shadow-[0_20px_60px_rgba(79,54,27,0.06)]">
+              <div className="border-b border-[#f0e7da] px-5 py-4">
+                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
+                  Sources
+                </p>
+                <h2 className="mt-2 text-[1.55rem] font-black tracking-[-0.04em] text-slate-900">
+                  攻略来源
+                </h2>
+              </div>
+
+              <div className="space-y-4 px-5 py-5">
+                <div className="space-y-3">
+                  <input
+                    value={sourceUrl}
+                    onChange={(event) => setSourceUrl(event.target.value)}
+                    placeholder="粘贴小红书链接"
+                    className="w-full rounded-[1.35rem] border border-[#eadfce] bg-[#fffaf2] px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                  />
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full rounded-full"
+                    onClick={() => void handleAddSource()}
+                    disabled={addingSource}
+                  >
+                    <Link2 className="mr-2 h-4 w-4" />
+                    {addingSource ? "抓取中…" : "添加并解析"}
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {addingSource ? (
+                    <div className="rounded-[1.8rem] border border-[#eadfce] bg-[#fffaf2] px-4 py-4">
+                      <div className="flex items-center gap-3 text-sm text-slate-600">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        正在抓取这条攻略…
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {plan.sourceLinks.length === 0 ? (
+                    <div className="rounded-[1.8rem] border border-dashed border-[#e7d9c6] bg-[#fffaf2] px-4 py-5 text-sm text-slate-500">
+                      先贴攻略，或者直接生成第一版时间轴。
+                    </div>
+                  ) : (
+                    plan.sourceLinks.map((source) => (
+                      <SourcePreview
+                        key={source.id}
+                        source={source}
+                        onChange={(value) => updateSourceField(source.id, value)}
+                        onRemove={() => removeSource(source.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-[2.1rem] border border-[#1f2f38] bg-[linear-gradient(180deg,#202d36_0%,#1a232a_100%)] text-white shadow-[0_22px_70px_rgba(16,24,32,0.18)]">
+              <div className="px-5 py-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-white/48">
+                      Ready
+                    </p>
+                    <h2 className="mt-2 text-[1.55rem] font-black tracking-[-0.04em] text-white">
+                      保存与生成
+                    </h2>
+                  </div>
+
+                  <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] text-white/68">
+                    {isDirty ? "未保存" : "已同步"}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-2 text-sm text-white/68">
+                  <p>预算：{getBudgetLabel(plan.budget)}</p>
+                  <p>上次保存：{formatDetailTime(savedPlan?.updatedAt || null)}</p>
+                  <p>最近生成：{formatDetailTime(plan.lastGeneratedAt)}</p>
+                </div>
+
+                {plan.generationError ? (
+                  <div className="mt-4 rounded-[1.3rem] border border-white/10 bg-white/8 px-4 py-3 text-sm text-white/72">
+                    {plan.generationError}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 grid gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full rounded-full bg-white text-slate-900 hover:bg-[#f5efe4]"
+                    onClick={() => void handleSave()}
+                    disabled={saving}
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    {saving ? "同步中…" : "保存到 CloudBase"}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    className="w-full rounded-full"
+                    onClick={() => void handleGenerate()}
+                    disabled={generating}
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {generating ? "Qwen 生成中…" : "用 Qwen 生成行程"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <div className="order-2 space-y-4">
+            <div className="rounded-[2.1rem] border border-[#eadfce] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,241,232,0.98))] px-5 py-5 shadow-[0_20px_60px_rgba(79,54,27,0.06)]">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
+                    Timeline
+                  </p>
+                  <h2 className="mt-2 text-[1.8rem] font-black tracking-[-0.05em] text-slate-900">
+                    时间轴
+                  </h2>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-slate-900/5 px-3 py-1.5 text-xs text-slate-600">
+                    {dayCount} 天
+                  </span>
+                  <span className="rounded-full bg-slate-900/5 px-3 py-1.5 text-xs text-slate-600">
+                    {visibleTimeline ? `${totalItems} 个节点` : "暂未排计划"}
+                  </span>
+                </div>
+              </div>
+
+              {plan.itinerary.overview ? (
+                <div className="mt-4 rounded-[1.5rem] border border-[#eadfce] bg-white/75 px-4 py-4 text-sm leading-6 text-slate-600">
+                  {plan.itinerary.overview}
+                </div>
+              ) : null}
+            </div>
+
+            {!visibleTimeline ? (
+              <div className="overflow-hidden rounded-[2.3rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf8_0%,#f3ebe0_100%)] shadow-[0_24px_70px_rgba(79,54,27,0.07)]">
+                <div className="relative px-6 py-8">
+                  <div className="absolute right-[-28px] top-[-40px] h-36 w-36 rounded-full bg-[rgba(28,56,68,0.08)] blur-2xl" />
+
+                  <div className="relative mx-auto max-w-md space-y-4 text-center">
+                    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.8rem] bg-white shadow-[0_16px_40px_rgba(79,54,27,0.08)]">
+                      <Compass className="h-8 w-8 text-slate-700" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="text-[1.8rem] font-black tracking-[-0.05em] text-slate-900">
+                        先把这趟旅行定下来
+                      </h3>
+                      <p className="text-sm leading-7 text-slate-500">
+                        现在还没有时间轴。你可以先生成一版，也可以从 Day 1 手动添加第一条安排。
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="rounded-full"
+                        onClick={() => addTimelineItem(0)}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        添加第一条安排
+                      </Button>
+                      <Button
+                        type="button"
+                        className="rounded-full"
+                        onClick={() => void handleGenerate()}
+                        disabled={generating}
+                      >
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        用 Qwen 生成
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {plan.itinerary.days.map((day, dayIndex) => {
+                  const skin = DAY_SURFACES[dayIndex % DAY_SURFACES.length];
+
+                  return (
+                    <motion.section
+                      key={`${day.day}-${day.dateLabel}`}
+                      initial={{ opacity: 0, y: 18 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: dayIndex * 0.05 }}
+                      className={clsx(
+                        "relative overflow-hidden rounded-[2.3rem] border shadow-[0_22px_70px_rgba(79,54,27,0.06)]",
+                        skin.shell
+                      )}
+                    >
+                      <div className={clsx("absolute inset-0", skin.glaze)} />
+
+                      <div className="relative px-5 py-5 sm:px-6">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div className="space-y-3">
+                            <span
+                              className={clsx(
+                                "inline-flex rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em]",
+                                skin.badge
+                              )}
+                            >
+                              Day {day.day}
+                            </span>
+
+                            <div className="space-y-3">
+                              <h3 className="text-[2rem] font-black tracking-[-0.05em] text-slate-900">
+                                {day.dateLabel}
+                              </h3>
+                              <input
+                                value={day.theme}
+                                onChange={(event) =>
+                                  updateItinerary((current) => ({
+                                    ...current,
+                                    days: current.days.map((item, index) =>
+                                      index === dayIndex
+                                        ? {
+                                            ...item,
+                                            theme: event.target.value,
+                                          }
+                                        : item
+                                    ),
+                                  }))
+                                }
+                                placeholder="当天主题"
+                                className="w-full rounded-full border border-white/70 bg-white/80 px-4 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-400 sm:w-72"
+                              />
+                            </div>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="rounded-full bg-white/70 text-slate-900 hover:bg-white"
+                            onClick={() => addTimelineItem(dayIndex)}
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            新增安排
+                          </Button>
+                        </div>
+
+                        <div className="mt-6 space-y-4">
+                          {day.items.length === 0 ? (
+                            <div className="rounded-[1.8rem] border border-dashed border-white/75 bg-white/55 px-4 py-5 text-sm text-slate-500">
+                              这一天还没排内容。
+                            </div>
+                          ) : (
+                            day.items.map((item, itemIndex) => {
+                              const rawKind =
+                                item.kind || inferItineraryItemKind(item, day.theme);
+                              const visibleKind = getVisibleTimelineKind(rawKind);
+                              const cardMeta = TIMELINE_CARD_META[visibleKind];
+                              const CardIcon = cardMeta.icon;
+                              const isEditing = editingItemId === item.id;
+                              const timeFieldClasses = clsx(
+                                "w-full min-w-0 rounded-[1.05rem] border px-3 py-2 text-sm text-slate-700 outline-none transition",
+                                isEditing
+                                  ? "border-[#dcc6b2] bg-white shadow-[0_12px_28px_rgba(79,54,27,0.08)] focus:border-slate-400"
+                                  : "border-white/40 bg-white/42"
+                              );
+
+                              return (
+                                <motion.div
+                                  key={item.id}
+                                  initial={{ opacity: 0, x: itemIndex % 2 === 0 ? -14 : 14 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ duration: 0.24, delay: itemIndex * 0.03 }}
+                                  className={clsx(
+                                    "relative pl-8",
+                                    itemIndex % 2 === 0 ? "sm:mr-8" : "sm:ml-10"
+                                  )}
+                                >
+                                  <div
+                                    className={clsx(
+                                      "absolute left-0 top-5 h-4 w-4 rounded-full border-[5px]",
+                                      skin.dot
+                                    )}
+                                  />
+                                  {itemIndex < day.items.length - 1 ? (
+                                    <div
+                                      className={clsx(
+                                        "absolute left-[7px] top-8 bottom-[-22px] w-[2px] rounded-full bg-gradient-to-b",
+                                        skin.line
+                                      )}
+                                    />
+                                  ) : null}
+
+                                  <div
+                                    className={clsx(
+                                      "relative overflow-hidden rounded-[2.05rem] border px-4 py-3.5 shadow-[0_14px_34px_rgba(79,54,27,0.05)] backdrop-blur transition",
+                                      cardMeta.shell,
+                                      isEditing &&
+                                        "border-slate-900 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(250,243,233,0.98))] shadow-[0_28px_70px_rgba(48,35,20,0.18)] ring-2 ring-slate-900/10"
+                                    )}
+                                  >
+                                    <div
+                                      className={clsx(
+                                        "absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,rgba(15,23,42,0),rgba(15,23,42,0.22),rgba(15,23,42,0))] transition",
+                                        !isEditing && "opacity-0"
+                                      )}
+                                    />
+                                    <div
+                                      className={clsx(
+                                        "pointer-events-none absolute inset-0 transition",
+                                        cardMeta.glow,
+                                        isEditing ? "opacity-100" : "opacity-55"
+                                      )}
+                                    />
+
+                                    <div className="relative z-10 space-y-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex flex-wrap items-center gap-2">
+                                          <span
+                                            className={clsx(
+                                              "inline-flex items-center gap-1.5 rounded-full font-semibold uppercase transition",
+                                              isEditing
+                                                ? "px-3 py-1 text-[11px] tracking-[0.18em]"
+                                                : "px-5 py-2.5 text-[14px] tracking-[0.14em] shadow-[0_12px_28px_rgba(79,54,27,0.16)] ring-1 ring-white/45",
+                                              cardMeta.chip
+                                            )}
+                                          >
+                                            <CardIcon
+                                              className={clsx(
+                                                isEditing ? "h-3.5 w-3.5" : "h-[18px] w-[18px]"
+                                              )}
+                                            />
+                                            {cardMeta.label}
+                                          </span>
+
+                                          {isEditing ? (
+                                            <div className="flex flex-wrap gap-2">
+                                              {TIMELINE_EDIT_KIND_OPTIONS.map((option) => (
+                                                <button
+                                                  key={option}
+                                                  type="button"
+                                                  onClick={() =>
+                                                    updateTimelineKind(dayIndex, item.id, option)
+                                                  }
+                                                  className={clsx(
+                                                    "rounded-full border px-3 py-1 text-[11px] font-medium transition",
+                                                    visibleKind === option
+                                                      ? "border-slate-900 bg-slate-900 text-white"
+                                                      : "border-white/70 bg-white/72 text-slate-600 hover:border-slate-300"
+                                                  )}
+                                                >
+                                                  {TIMELINE_CARD_META[option].label}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          ) : null}
+                                        </div>
+
+                                        <div className="flex shrink-0 items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setItemEditing(item.id, !isEditing)}
+                                            className={clsx(
+                                              "inline-flex h-9 w-9 items-center justify-center rounded-full border transition",
+                                              isEditing
+                                                ? "border-slate-900 bg-slate-900 text-white"
+                                                : "border-black/5 bg-white/80 text-slate-600 hover:border-slate-300"
+                                            )}
+                                            aria-label={isEditing ? "完成编辑" : "编辑安排"}
+                                          >
+                                            {isEditing ? (
+                                              <Check className="h-4 w-4" />
+                                            ) : (
+                                              <Pencil className="h-4 w-4" />
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeTimelineItem(dayIndex, item.id)}
+                                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/5 bg-white/80 text-slate-500 transition hover:border-rose-200 hover:text-rose-600"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <div
+                                        className={clsx(
+                                          "grid grid-cols-[48px_minmax(0,1fr)] items-start gap-2.5 rounded-[1.2rem] border px-3 py-2.5 transition sm:grid-cols-[58px_minmax(0,1fr)]",
+                                          isEditing
+                                            ? "border-[#dcc6b2] bg-white shadow-[0_12px_28px_rgba(79,54,27,0.08)]"
+                                            : "border-white/40 bg-white/42"
+                                        )}
+                                      >
+                                        <div className="pt-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                          时间
+                                        </div>
+                                        {isEditing ? (
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <input
+                                              type="time"
+                                              value={item.startTime}
+                                              onChange={(event) =>
+                                                updateTimelineItem(
+                                                  dayIndex,
+                                                  item.id,
+                                                  "startTime",
+                                                  event.target.value
+                                                )
+                                              }
+                                              disabled={!isEditing}
+                                              className={timeFieldClasses}
+                                            />
+                                            <input
+                                              type="time"
+                                              value={item.endTime}
+                                              onChange={(event) =>
+                                                updateTimelineItem(
+                                                  dayIndex,
+                                                  item.id,
+                                                  "endTime",
+                                                  event.target.value
+                                                )
+                                              }
+                                              disabled={!isEditing}
+                                              className={timeFieldClasses}
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="min-h-[36px] py-1.5 text-sm leading-6 text-slate-700">
+                                            {item.startTime || item.endTime
+                                              ? `${item.startTime || "--:--"} - ${
+                                                  item.endTime || "--:--"
+                                                }`
+                                              : "添加时间"}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <LabeledAutoField
+                                        label="地点"
+                                        value={item.placeName}
+                                        onChange={(value) =>
+                                          updateTimelineItem(dayIndex, item.id, "placeName", value)
+                                        }
+                                        readOnly={!isEditing}
+                                        emptyHint="添加地点"
+                                      />
+
+                                      <LabeledAutoField
+                                        label="区域"
+                                        value={item.districtOrArea}
+                                        onChange={(value) =>
+                                          updateTimelineItem(
+                                            dayIndex,
+                                            item.id,
+                                            "districtOrArea",
+                                            value
+                                          )
+                                        }
+                                        readOnly={!isEditing}
+                                        emptyHint="补充区域"
+                                      />
+
+                                      <LabeledAutoField
+                                        label="交通"
+                                        value={item.transport}
+                                        onChange={(value) =>
+                                          updateTimelineItem(dayIndex, item.id, "transport", value)
+                                        }
+                                        readOnly={!isEditing}
+                                        emptyHint="填写交通方式"
+                                      />
+
+                                      <LabeledAutoField
+                                        label="安排"
+                                        value={item.summary}
+                                        onChange={(value) =>
+                                          updateTimelineItem(dayIndex, item.id, "summary", value)
+                                        }
+                                        readOnly={!isEditing}
+                                        minRows={2}
+                                        emptyHint="写下这一段要做什么"
+                                      />
+
+                                      <LabeledAutoField
+                                        label="花费"
+                                        value={item.estimatedCost}
+                                        onChange={(value) =>
+                                          updateTimelineItem(
+                                            dayIndex,
+                                            item.id,
+                                            "estimatedCost",
+                                            value
+                                          )
+                                        }
+                                        readOnly={!isEditing}
+                                        emptyHint="补充预算"
+                                      />
+
+                                      <LabeledAutoField
+                                        label="提醒"
+                                        value={item.tips}
+                                        onChange={(value) =>
+                                          updateTimelineItem(dayIndex, item.id, "tips", value)
+                                        }
+                                        readOnly={!isEditing}
+                                        minRows={2}
+                                        emptyHint="预约、备选或注意事项"
+                                      />
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </motion.section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="fixed inset-x-4 bottom-4 z-30 xl:hidden">
+        <div className="grid grid-cols-2 gap-3 rounded-[1.9rem] border border-white/70 bg-white/88 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.12)] backdrop-blur">
+          <Button
+            type="button"
+            variant="secondary"
+            className="rounded-[1.4rem]"
+            onClick={() => void handleSave()}
+            disabled={saving}
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {saving ? "同步中" : "保存"}
+          </Button>
+
+          <Button
+            type="button"
+            className="rounded-[1.4rem]"
+            onClick={() => void handleGenerate()}
+            disabled={generating}
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            {generating ? "生成中" : "生成"}
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
