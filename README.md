@@ -60,6 +60,7 @@ Configure these in EdgeOne Pages for the production project:
 - `SESSION_SECRET`
 - `INTERNAL_API_SECRET`
 - `DASHSCOPE_API_KEY`
+- `TRAVEL_PLAN_MODEL`
 - `SITE_URL`
 
 Use `.env.local.example` as the template for local development.
