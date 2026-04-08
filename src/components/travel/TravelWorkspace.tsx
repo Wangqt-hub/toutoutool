@@ -261,6 +261,32 @@ function delay(ms: number) {
   });
 }
 
+function mergeTravelPlanSnapshot(
+  base: TravelPlanArchive,
+  latest: TravelPlanArchive
+) {
+  return {
+    ...base,
+    ...latest,
+    sourceLinks: latest.sourceLinks,
+    itinerary: latest.itinerary,
+    preferences: latest.preferences,
+  };
+}
+
+function didGeneratePlanChange(
+  previousPlan: TravelPlanArchive,
+  latestPlan: TravelPlanArchive
+) {
+  return (
+    latestPlan.planStatus === "generated" &&
+    !latestPlan.generationError &&
+    (latestPlan.lastGeneratedAt !== previousPlan.lastGeneratedAt ||
+      latestPlan.updatedAt !== previousPlan.updatedAt ||
+      toEditableTravelSnapshot(latestPlan) !== toEditableTravelSnapshot(previousPlan))
+  );
+}
+
 function resizeTextarea(element: HTMLTextAreaElement | null) {
   if (!element) {
     return;
@@ -1240,6 +1266,40 @@ export function TravelWorkspace({ travelPlanId }: Props) {
     setPlan((current) => (current ? mutator(current) : current));
   }
 
+  async function fetchLatestPlan() {
+    return readTravelApiResponse<TravelPlanArchive>(
+      await fetch(`/api/travel-plans/${travelPlanId}`, {
+        cache: "no-store",
+      })
+    );
+  }
+
+  async function waitForGenerateResult(previousPlan: TravelPlanArchive) {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const latest = await fetchLatestPlan().catch(() => null);
+
+      if (latest) {
+        if (didGeneratePlanChange(previousPlan, latest)) {
+          return latest;
+        }
+
+        if (
+          latest.planStatus === "attention" &&
+          !!latest.generationError &&
+          latest.updatedAt !== previousPlan.updatedAt
+        ) {
+          return latest;
+        }
+      }
+
+      if (attempt < 5) {
+        await delay(1200);
+      }
+    }
+
+    return null;
+  }
+
   function setItemEditing(itemId: string, editing: boolean) {
     setEditingItemId(editing ? itemId : null);
   }
@@ -1412,20 +1472,8 @@ export function TravelWorkspace({ travelPlanId }: Props) {
         })
       );
 
-      const latest =
-        (await readTravelApiResponse<TravelPlanArchive>(
-          await fetch(`/api/travel-plans/${travelPlanId}`, {
-            cache: "no-store",
-          })
-        ).catch(() => null)) || data;
-
-      const nextPlan = {
-        ...draftSnapshot,
-        ...latest,
-        sourceLinks: latest.sourceLinks,
-        itinerary: latest.itinerary,
-        preferences: latest.preferences,
-      };
+      const latest = (await fetchLatestPlan().catch(() => null)) || data;
+      const nextPlan = mergeTravelPlanSnapshot(draftSnapshot, latest);
 
       setSavedPlan(nextPlan);
       setPlan(nextPlan);
@@ -1475,17 +1523,42 @@ export function TravelWorkspace({ travelPlanId }: Props) {
         })
       );
 
-      setSavedPlan(data);
-      setPlan(data);
+      const nextPlan = mergeTravelPlanSnapshot(readyPlan, data);
+
+      setSavedPlan(nextPlan);
+      setPlan(nextPlan);
       setGenerationTone("success");
       setGenerationProgress(100);
       setMessage("Qwen 已生成新时间轴，现在可以继续编辑。");
       await delay(420);
     } catch (generateError) {
+      const recoveredPlan = await waitForGenerateResult(readyPlan);
+
+      if (recoveredPlan && didGeneratePlanChange(readyPlan, recoveredPlan)) {
+        const nextPlan = mergeTravelPlanSnapshot(readyPlan, recoveredPlan);
+
+        setSavedPlan(nextPlan);
+        setPlan(nextPlan);
+        setError("");
+        setGenerationTone("success");
+        setGenerationProgress(100);
+        setMessage("Qwen 已生成新时间轴，现在可以继续编辑。");
+        await delay(420);
+        return;
+      }
+
+      if (recoveredPlan) {
+        const nextPlan = mergeTravelPlanSnapshot(readyPlan, recoveredPlan);
+
+        setSavedPlan(nextPlan);
+        setPlan(nextPlan);
+      }
+
       setGenerationTone("error");
       setGenerationProgress(100);
       setError(
-        generateError instanceof Error ? generateError.message : "生成行程失败。"
+        recoveredPlan?.generationError ||
+          (generateError instanceof Error ? generateError.message : "生成行程失败。")
       );
       await delay(520);
     } finally {
