@@ -37,7 +37,7 @@ function getDashScopeApiKey() {
 
 function summarizeSources(plan: TravelPlanArchive) {
   if (plan.sourceLinks.length === 0) {
-    return "没有外部攻略链接。请基于用户设置输出可执行的行程。";
+    return "No external guide links were provided. Build the itinerary from the saved trip settings.";
   }
 
   return plan.sourceLinks
@@ -46,12 +46,12 @@ function summarizeSources(plan: TravelPlanArchive) {
         source.manualSummary || source.contentText || source.excerpt || source.error;
 
       return [
-        `来源${index + 1}:`,
+        `Source ${index + 1}:`,
         `- url: ${source.url}`,
         `- status: ${source.status}`,
-        `- title: ${source.title || "未提取到标题"}`,
-        `- author: ${source.author || "未知"}`,
-        `- summary: ${summary || "无"}`,
+        `- title: ${source.title || "unknown"}`,
+        `- author: ${source.author || "unknown"}`,
+        `- summary: ${summary || "none"}`,
       ].join("\n");
     })
     .join("\n\n");
@@ -59,23 +59,27 @@ function summarizeSources(plan: TravelPlanArchive) {
 
 function buildPrompt(plan: TravelPlanArchive) {
   return [
-    "请输出一个 JSON 对象，不要输出 Markdown，不要输出解释。",
-    "JSON 顶层字段必须是 overview 和 days。",
-    "days 必须是数组，每天包含 day、theme、items。",
-    "items 必须是数组，每项包含 startTime、endTime、placeName、districtOrArea、summary、transport、estimatedCost、tips、sourceRefs。",
-    "sourceRefs 必须是字符串数组，引用来源时使用对应来源链接或标题即可。",
-    "行程要松弛、可执行，不要过度赶场。",
-    "如果外部攻略存在冲突，请优先保留更稳妥、交通成本更低、节奏更顺的安排。",
+    "Return exactly one JSON object with no Markdown and no explanation.",
+    "The top-level JSON keys must be overview and days.",
+    "days must be an array, and each day must include day, theme, and items.",
+    "items must be an array, and each item must include startTime, endTime, placeName, districtOrArea, summary, transport, estimatedCost, tips, and sourceRefs.",
+    "sourceRefs must be an array of strings.",
+    "All narrative content must be written in Simplified Chinese.",
+    "Use Chinese for overview, day themes, summaries, transport notes, cost descriptions, and tips.",
+    "You may keep official foreign place names, districts, neighborhoods, attractions, restaurants, and transit stop names in English when that is more accurate or commonly used.",
+    "Do not return an English-only itinerary. Even for overseas trips, the surrounding explanation must stay in Chinese.",
+    "Keep the itinerary relaxed, practical, and feasible. Avoid over-scheduling.",
+    "If external sources conflict, prefer the option that is more reliable, lower-friction, and easier to execute.",
     "",
-    "用户档案：",
-    `- 目的地: ${plan.destination}`,
-    `- 出发日期: ${plan.startDate}`,
-    `- 结束日期: ${plan.endDate}`,
-    `- 预算: ${getBudgetLabel(plan.budget)}`,
-    `- 偏好: ${plan.preferences.join(" / ") || "未填写"}`,
-    `- 备注: ${plan.notes || "无"}`,
+    "Traveler profile:",
+    `- destination: ${plan.destination}`,
+    `- start date: ${plan.startDate}`,
+    `- end date: ${plan.endDate}`,
+    `- budget: ${getBudgetLabel(plan.budget)}`,
+    `- preferences: ${plan.preferences.join(" / ") || "none"}`,
+    `- notes: ${plan.notes || "none"}`,
     "",
-    "攻略来源：",
+    "Reference sources:",
     summarizeSources(plan),
   ].join("\n");
 }
@@ -107,7 +111,7 @@ export async function generateTravelItinerary(plan: TravelPlanArchive) {
         {
           role: "system",
           content:
-            "You are a travel planner. Return JSON only. Keep the itinerary feasible, structured, and easy to edit.",
+            "You are a travel planner. Return JSON only. Keep the itinerary feasible, structured, and easy to edit. All narrative content must be in Simplified Chinese. You may keep official foreign place names, districts, attractions, restaurants, and transit stop names in English when needed for accuracy, but the rest of the itinerary must remain in Chinese.",
         },
         {
           role: "user",
