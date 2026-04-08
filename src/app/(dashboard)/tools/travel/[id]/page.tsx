@@ -6,6 +6,8 @@ type PageProps = {
   };
 };
 
+export const dynamic = "force-dynamic";
+
 export default function TravelWorkspacePage({ params }: PageProps) {
   return <TravelWorkspace travelPlanId={params.id} />;
 }

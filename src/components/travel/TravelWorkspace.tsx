@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import {
@@ -11,6 +12,7 @@ import {
   Coffee,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   Clock3,
   Compass,
   Link2,
@@ -268,6 +270,613 @@ function resizeTextarea(element: HTMLTextAreaElement | null) {
   element.style.height = `${element.scrollHeight}px`;
 }
 
+const TIME_WHEEL_ITEM_HEIGHT = 42;
+const TIME_WHEEL_SPACER_HEIGHT = TIME_WHEEL_ITEM_HEIGHT * 2;
+const TIME_HOUR_OPTIONS = [
+  "",
+  ...Array.from({ length: 24 }, (_, index) => index.toString().padStart(2, "0")),
+];
+const TIME_MINUTE_OPTIONS = [
+  "",
+  ...Array.from({ length: 60 }, (_, index) => index.toString().padStart(2, "0")),
+];
+
+function parseTimeValue(value: string) {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+
+  if (!match) {
+    return { hour: "", minute: "" };
+  }
+
+  return {
+    hour: match[1],
+    minute: match[2],
+  };
+}
+
+function buildTimeValue(hour: string, minute: string) {
+  if (!hour && !minute) {
+    return "";
+  }
+
+  const nextHour = hour || "00";
+  const nextMinute = minute || "00";
+  return `${nextHour}:${nextMinute}`;
+}
+
+function formatTimeLabel(value: string) {
+  return value || "时间";
+}
+
+
+function formatTimeDisplayLabel(value: string) {
+  return value || "时间";
+}
+
+function parseLocalDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatLocalDateValue(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfCalendarMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function shiftCalendarMonth(date: Date, offset: number) {
+  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
+}
+
+function buildCalendarDays(month: Date) {
+  const firstDay = startOfCalendarMonth(month);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+
+    return {
+      value: formatLocalDateValue(date),
+      day: date.getDate(),
+      isCurrentMonth: date.getMonth() === month.getMonth(),
+    };
+  });
+}
+
+function formatCalendarMonthLabel(date: Date) {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+}
+
+function formatDateFieldLabel(value: string) {
+  const date = parseLocalDate(value);
+
+  if (!date) {
+    return "选择日期";
+  }
+
+  return `${date.getFullYear()}/${`${date.getMonth() + 1}`.padStart(2, "0")}/${`${date.getDate()}`.padStart(2, "0")}`;
+}
+
+function formatSelectedDateTitle(value: string) {
+  const date = parseLocalDate(value);
+
+  if (!date) {
+    return "未选择日期";
+  }
+
+  const weekLabel = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${weekLabel}`;
+}
+
+function TimeWheelColumn({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const container = ref.current;
+
+    if (!container) {
+      return;
+    }
+
+    const index = Math.max(0, options.indexOf(value));
+    const targetTop = index * TIME_WHEEL_ITEM_HEIGHT;
+
+    if (Math.abs(container.scrollTop - targetTop) > 1) {
+      container.scrollTo({
+        top: targetTop,
+        behavior: "auto",
+      });
+    }
+  }, [options, value]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleScroll = () => {
+    const container = ref.current;
+
+    if (!container) {
+      return;
+    }
+
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = window.setTimeout(() => {
+      const index = Math.max(
+        0,
+        Math.min(options.length - 1, Math.round(container.scrollTop / TIME_WHEEL_ITEM_HEIGHT))
+      );
+      const nextValue = options[index] ?? "";
+
+      if (nextValue !== value) {
+        onChange(nextValue);
+      }
+    }, 60);
+  };
+
+  return (
+    <div className="relative">
+      <div
+        ref={ref}
+        aria-label={ariaLabel}
+        onScroll={handleScroll}
+        className="h-[210px] overflow-y-auto overscroll-contain rounded-[1.6rem] bg-[#f7efe6] px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ scrollSnapType: "y mandatory" }}
+      >
+        <div style={{ height: TIME_WHEEL_SPACER_HEIGHT }} />
+        {options.map((option, index) => {
+          const selected = option === value;
+
+          return (
+            <button
+              key={`${ariaLabel}-${option || "blank"}-${index}`}
+              type="button"
+              onClick={() => {
+                onChange(option);
+                ref.current?.scrollTo({
+                  top: index * TIME_WHEEL_ITEM_HEIGHT,
+                  behavior: "smooth",
+                });
+              }}
+              className={clsx(
+                "flex h-[42px] w-full snap-center items-center justify-center rounded-[0.95rem] font-mono text-[22px] font-semibold tabular-nums tracking-[0.01em] transition",
+                selected ? "text-slate-900" : "text-slate-400"
+              )}
+            >
+              {option || "--"}
+            </button>
+          );
+        })}
+        <div style={{ height: TIME_WHEEL_SPACER_HEIGHT }} />
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-2 top-1/2 h-[42px] -translate-y-1/2 rounded-[1rem] border border-[#dfccb8] bg-white/88 shadow-[0_10px_26px_rgba(79,54,27,0.08)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-14 rounded-t-[1.6rem] bg-[linear-gradient(180deg,rgba(247,239,230,0.98),rgba(247,239,230,0))]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 rounded-b-[1.6rem] bg-[linear-gradient(0deg,rgba(247,239,230,0.98),rgba(247,239,230,0))]" />
+    </div>
+  );
+}
+
+function FloatingPickerPortal({ children }: { children: ReactNode }) {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(children, document.body);
+}
+
+function useBodyScrollLock(locked: boolean) {
+  useEffect(() => {
+    if (!locked || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const { body, documentElement } = document;
+    const lockCount = Number(body.dataset.scrollLockCount ?? "0");
+
+    if (lockCount === 0) {
+      body.dataset.scrollLockOverflow = body.style.overflow;
+      body.dataset.scrollLockPosition = body.style.position;
+      body.dataset.scrollLockTop = body.style.top;
+      body.dataset.scrollLockLeft = body.style.left;
+      body.dataset.scrollLockRight = body.style.right;
+      body.dataset.scrollLockWidth = body.style.width;
+      body.dataset.scrollLockTouchAction = body.style.touchAction;
+      body.dataset.scrollLockHtmlOverflow = documentElement.style.overflow;
+      body.dataset.scrollLockHtmlOverscroll = documentElement.style.overscrollBehavior;
+      body.dataset.scrollLockY = `${window.scrollY}`;
+
+      body.style.overflow = "hidden";
+      body.style.position = "fixed";
+      body.style.top = `-${window.scrollY}px`;
+      body.style.left = "0";
+      body.style.right = "0";
+      body.style.width = "100%";
+      body.style.touchAction = "none";
+      documentElement.style.overflow = "hidden";
+      documentElement.style.overscrollBehavior = "none";
+    }
+
+    body.dataset.scrollLockCount = `${lockCount + 1}`;
+
+    return () => {
+      const nextCount = Math.max(0, Number(body.dataset.scrollLockCount ?? "1") - 1);
+      body.dataset.scrollLockCount = `${nextCount}`;
+
+      if (nextCount > 0) {
+        return;
+      }
+
+      const scrollY = Number(body.dataset.scrollLockY ?? "0");
+
+      body.style.overflow = body.dataset.scrollLockOverflow ?? "";
+      body.style.position = body.dataset.scrollLockPosition ?? "";
+      body.style.top = body.dataset.scrollLockTop ?? "";
+      body.style.left = body.dataset.scrollLockLeft ?? "";
+      body.style.right = body.dataset.scrollLockRight ?? "";
+      body.style.width = body.dataset.scrollLockWidth ?? "";
+      body.style.touchAction = body.dataset.scrollLockTouchAction ?? "";
+      documentElement.style.overflow = body.dataset.scrollLockHtmlOverflow ?? "";
+      documentElement.style.overscrollBehavior = body.dataset.scrollLockHtmlOverscroll ?? "";
+
+      delete body.dataset.scrollLockCount;
+      delete body.dataset.scrollLockOverflow;
+      delete body.dataset.scrollLockPosition;
+      delete body.dataset.scrollLockTop;
+      delete body.dataset.scrollLockLeft;
+      delete body.dataset.scrollLockRight;
+      delete body.dataset.scrollLockWidth;
+      delete body.dataset.scrollLockTouchAction;
+      delete body.dataset.scrollLockHtmlOverflow;
+      delete body.dataset.scrollLockHtmlOverscroll;
+      delete body.dataset.scrollLockY;
+
+      window.scrollTo(0, scrollY);
+    };
+  }, [locked]);
+}
+
+function TimePickerField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftHour, setDraftHour] = useState("");
+  const [draftMinute, setDraftMinute] = useState("");
+  const isEndField = label.includes("结束") || label.toLowerCase().includes("end");
+  useBodyScrollLock(open);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const { hour, minute } = parseTimeValue(value);
+    setDraftHour(hour);
+    setDraftMinute(minute);
+
+  }, [open, value]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={clsx(
+          "inline-flex min-w-0 items-center bg-transparent px-0 py-1 text-left font-mono text-[18px] font-semibold tabular-nums tracking-[0.01em] transition sm:text-[19px]",
+          value ? "text-slate-900" : "text-slate-400"
+        )}
+      >
+        <span className="truncate">{formatTimeDisplayLabel(value)}</span>
+        {isEndField ? null : (
+          <span className="shrink-0 pl-2 text-slate-300">
+            -
+          </span>
+        )}
+      </button>
+
+      <FloatingPickerPortal>
+        <AnimatePresence>
+        {open ? (
+          <>
+            <motion.button
+              type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="fixed inset-0 z-[80] bg-slate-950/28 backdrop-blur-[2px]"
+              onClick={() => setOpen(false)}
+              aria-label="关闭时间选择器"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 20 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-[360px] rounded-[2rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf9_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(33,24,18,0.16)]">
+              <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-5">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                >
+                  取消
+                </button>
+
+                <div className="min-w-0 text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Time
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">
+                    {isEndField ? "结束时间" : "开始时间"}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftHour("");
+                      setDraftMinute("");
+                    }}
+                    className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                  >
+                    清空
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(buildTimeValue(draftHour, draftMinute));
+                      setOpen(false);
+                    }}
+                    className="text-sm font-semibold text-slate-900 transition hover:text-slate-700"
+                  >
+                    完成
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                <div className="rounded-[2rem] border border-[#eadfce] bg-white/72 p-4 shadow-[0_14px_40px_rgba(79,54,27,0.08)]">
+                  <div className="text-center font-mono text-[2rem] font-semibold tabular-nums tracking-[0.02em] text-slate-900">
+                    {draftHour || "--"}:{draftMinute || "--"}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-center gap-2">
+                    <TimeWheelColumn
+                      options={TIME_HOUR_OPTIONS}
+                      value={draftHour}
+                      onChange={setDraftHour}
+                      ariaLabel="小时"
+                    />
+                    <div className="text-center font-mono text-[1.75rem] font-semibold text-slate-300">
+                      :
+                    </div>
+                    <TimeWheelColumn
+                      options={TIME_MINUTE_OPTIONS}
+                      value={draftMinute}
+                      onChange={setDraftMinute}
+                      ariaLabel="分钟"
+                    />
+                  </div>
+                </div>
+              </div>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+        </AnimatePresence>
+      </FloatingPickerPortal>
+    </>
+  );
+}
+
+function DatePickerField({
+  label,
+  value,
+  onChange,
+  hideLabel = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hideLabel?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() =>
+    startOfCalendarMonth(parseLocalDate(value) ?? new Date())
+  );
+  useBodyScrollLock(open);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    setVisibleMonth(startOfCalendarMonth(parseLocalDate(value) ?? new Date()));
+
+  }, [open, value]);
+
+  const selectedValue = parseLocalDate(value) ? value : "";
+  const calendarDays = buildCalendarDays(visibleMonth);
+
+  return (
+    <div className="space-y-2">
+      {hideLabel ? null : <label className="text-xs font-medium text-slate-500">{label}</label>}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-left text-[16px] text-slate-700 outline-none transition hover:border-slate-300"
+      >
+        {formatDateFieldLabel(value)}
+      </button>
+
+      <FloatingPickerPortal>
+        <AnimatePresence>
+        {open ? (
+          <>
+            <motion.button
+              type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="fixed inset-0 z-[80] bg-slate-950/28 backdrop-blur-[2px]"
+              onClick={() => setOpen(false)}
+              aria-label="关闭日期选择器"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 20 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-[368px] rounded-[2rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf9_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(33,24,18,0.16)]">
+                <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-5">
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                  >
+                    取消
+                  </button>
+
+                  <div className="min-w-0 text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Date
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {label}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const todayValue = formatLocalDateValue(new Date());
+                      onChange(todayValue);
+                      setOpen(false);
+                    }}
+                    className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                  >
+                    今天
+                  </button>
+                </div>
+
+                <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                  <div className="rounded-[2rem] border border-[#eadfce] bg-white/72 p-4 shadow-[0_14px_40px_rgba(79,54,27,0.08)]">
+                    <div className="text-center text-lg font-semibold text-slate-900">
+                      {formatSelectedDateTitle(value)}
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setVisibleMonth((current) => shiftCalendarMonth(current, -1))}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#eadfce] bg-white text-slate-700 transition hover:border-slate-300"
+                        aria-label="上个月"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <div className="text-sm font-semibold text-slate-800">
+                        {formatCalendarMonthLabel(visibleMonth)}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setVisibleMonth((current) => shiftCalendarMonth(current, 1))}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#eadfce] bg-white text-slate-700 transition hover:border-slate-300"
+                        aria-label="下个月"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-slate-400">
+                      {["日", "一", "二", "三", "四", "五", "六"].map((weekDay) => (
+                        <div key={weekDay}>{weekDay}</div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-7 gap-1">
+                      {calendarDays.map((day) => {
+                        const isSelected = day.value === selectedValue;
+
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => {
+                              onChange(day.value);
+                              setOpen(false);
+                            }}
+                            className={clsx(
+                              "flex h-10 items-center justify-center rounded-[0.95rem] text-sm font-medium transition",
+                              isSelected
+                                ? "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)]"
+                                : day.isCurrentMonth
+                                  ? "text-slate-700 hover:bg-slate-100"
+                                  : "text-slate-300 hover:bg-slate-100/70"
+                            )}
+                          >
+                            {day.day}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+        </AnimatePresence>
+      </FloatingPickerPortal>
+    </div>
+  );
+}
+
 function LabeledAutoField({
   label,
   value,
@@ -309,7 +918,7 @@ function LabeledAutoField({
   }, [value, readOnly]);
 
   const shellClassName = clsx(
-    "grid grid-cols-[48px_minmax(0,1fr)] items-start gap-2.5 rounded-[1.2rem] border px-3 py-2.5 transition sm:grid-cols-[58px_minmax(0,1fr)]",
+    "grid grid-cols-[42px_minmax(0,1fr)] items-start gap-2 rounded-[1.1rem] border px-3 py-2 transition sm:grid-cols-[56px_minmax(0,1fr)] sm:gap-2.5 sm:rounded-[1.2rem] sm:py-2.5",
     readOnly
       ? "border-white/40 bg-white/42"
       : "border-[#dcc6b2] bg-white shadow-[0_12px_28px_rgba(79,54,27,0.08)]"
@@ -317,12 +926,12 @@ function LabeledAutoField({
 
   return (
     <div className={shellClassName}>
-      <div className="pt-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+      <div className="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:pt-1.5 sm:text-[11px] sm:tracking-[0.14em]">
         {label}
       </div>
 
       {readOnly && !value.trim() ? (
-        <div className="min-h-[36px] py-1.5 text-sm leading-6 text-slate-400">
+        <div className="min-h-[32px] py-1 text-[13px] leading-[1.55] text-slate-400 sm:min-h-[36px] sm:py-1.5 sm:text-sm sm:leading-6">
           {emptyHint}
         </div>
       ) : (
@@ -334,7 +943,7 @@ function LabeledAutoField({
           readOnly={readOnly}
           rows={minRows}
           aria-label={label}
-          className="min-h-[36px] w-full resize-none overflow-hidden bg-transparent px-0 py-1.5 text-sm leading-6 text-slate-700 outline-none"
+          className="min-h-[32px] w-full resize-none overflow-hidden bg-transparent px-0 py-1 text-[13px] leading-[1.55] text-slate-700 outline-none sm:min-h-[36px] sm:py-1.5 sm:text-sm sm:leading-6"
         />
       )}
     </div>
@@ -510,6 +1119,7 @@ function GenerationOverlay({
 
 export function TravelWorkspace({ travelPlanId }: Props) {
   const router = useRouter();
+  const timelineItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [savedPlan, setSavedPlan] = useState<TravelPlanArchive | null>(null);
   const [plan, setPlan] = useState<TravelPlanArchive | null>(null);
   const [loading, setLoading] = useState(true);
@@ -523,6 +1133,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [pendingScrollItemId, setPendingScrollItemId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadPlan() {
@@ -597,6 +1208,33 @@ export function TravelWorkspace({ travelPlanId }: Props) {
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
   }, [isDirty]);
+
+  useLayoutEffect(() => {
+    if (!pendingScrollItemId) {
+      return undefined;
+    }
+
+    const target = timelineItemRefs.current[pendingScrollItemId];
+
+    if (!target) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+      });
+      setPendingScrollItemId((current) =>
+        current === pendingScrollItemId ? null : current
+      );
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [pendingScrollItemId, plan]);
 
   function updatePlan(mutator: (current: TravelPlanArchive) => TravelPlanArchive) {
     setPlan((current) => (current ? mutator(current) : current));
@@ -676,7 +1314,9 @@ export function TravelWorkspace({ travelPlanId }: Props) {
           : day
       ),
     }));
+    delete timelineItemRefs.current[itemId];
     setEditingItemId((current) => (current === itemId ? null : current));
+    setPendingScrollItemId((current) => (current === itemId ? null : current));
   }
 
   function updateTimelineItem(
@@ -714,6 +1354,10 @@ export function TravelWorkspace({ travelPlanId }: Props) {
           : day
       ),
     }));
+
+    if (field === "startTime" || field === "endTime") {
+      setPendingScrollItemId(itemId);
+    }
   }
 
   function updateTimelineKind(
@@ -1024,7 +1668,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
 
         <section className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="order-1 space-y-4 xl:sticky xl:top-24 xl:self-start">
-            <div className="overflow-hidden rounded-[2.1rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf8_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(79,54,27,0.07)]">
+            <div className="overflow-visible rounded-[2.1rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf8_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(79,54,27,0.07)]">
               <div className="border-b border-[#eadfce] px-5 py-4">
                 <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
                   Setup
@@ -1051,27 +1695,23 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <label className="text-xs font-medium text-slate-500">开始</label>
-                    <input
-                      type="date"
+                    <DatePickerField
+                      hideLabel
+                      label="开始"
                       value={plan.startDate}
-                      onChange={(event) =>
-                        updateDates(event.target.value, plan.endDate)
-                      }
-                      className="w-full rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                      onChange={(value) => updateDates(value, plan.endDate)}
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <label className="text-xs font-medium text-slate-500">结束</label>
-                    <input
-                      type="date"
+                    <DatePickerField
+                      hideLabel
+                      label="结束"
                       value={plan.endDate}
-                      onChange={(event) =>
-                        updateDates(plan.startDate, event.target.value)
-                      }
-                      className="w-full rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                      onChange={(value) => updateDates(plan.startDate, value)}
                     />
                   </div>
                 </div>
@@ -1405,7 +2045,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                           </Button>
                         </div>
 
-                        <div className="mt-6 space-y-4">
+                        <div className="mt-5 space-y-3 sm:mt-6 sm:space-y-4">
                           {day.items.length === 0 ? (
                             <div className="rounded-[1.8rem] border border-dashed border-white/75 bg-white/55 px-4 py-5 text-sm text-slate-500">
                               这一天还没排内容。
@@ -1418,34 +2058,31 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                               const cardMeta = TIMELINE_CARD_META[visibleKind];
                               const CardIcon = cardMeta.icon;
                               const isEditing = editingItemId === item.id;
-                              const timeFieldClasses = clsx(
-                                "w-full min-w-0 rounded-[1.05rem] border px-3 py-2 text-sm text-slate-700 outline-none transition",
-                                isEditing
-                                  ? "border-[#dcc6b2] bg-white shadow-[0_12px_28px_rgba(79,54,27,0.08)] focus:border-slate-400"
-                                  : "border-white/40 bg-white/42"
-                              );
 
                               return (
                                 <motion.div
                                   key={item.id}
+                                  ref={(node) => {
+                                    timelineItemRefs.current[item.id] = node;
+                                  }}
                                   initial={{ opacity: 0, x: itemIndex % 2 === 0 ? -14 : 14 }}
                                   animate={{ opacity: 1, x: 0 }}
                                   transition={{ duration: 0.24, delay: itemIndex * 0.03 }}
                                   className={clsx(
-                                    "relative pl-8",
+                                    "relative pl-4 sm:pl-7",
                                     itemIndex % 2 === 0 ? "sm:mr-8" : "sm:ml-10"
                                   )}
                                 >
                                   <div
                                     className={clsx(
-                                      "absolute left-0 top-5 h-4 w-4 rounded-full border-[5px]",
+                                      "absolute left-0 top-5 h-3.5 w-3.5 rounded-full border-[4px] sm:h-4 sm:w-4 sm:border-[5px]",
                                       skin.dot
                                     )}
                                   />
                                   {itemIndex < day.items.length - 1 ? (
                                     <div
                                       className={clsx(
-                                        "absolute left-[7px] top-8 bottom-[-22px] w-[2px] rounded-full bg-gradient-to-b",
+                                        "absolute left-[5px] top-8 bottom-[-18px] w-[2px] rounded-full bg-gradient-to-b sm:left-[7px] sm:bottom-[-22px]",
                                         skin.line
                                       )}
                                     />
@@ -1453,7 +2090,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
 
                                   <div
                                     className={clsx(
-                                      "relative overflow-hidden rounded-[2.05rem] border px-4 py-3.5 shadow-[0_14px_34px_rgba(79,54,27,0.05)] backdrop-blur transition",
+                                      "relative overflow-hidden rounded-[1.85rem] border px-3.5 py-3 shadow-[0_14px_34px_rgba(79,54,27,0.05)] backdrop-blur transition sm:rounded-[2.05rem] sm:px-4 sm:py-3.5",
                                       cardMeta.shell,
                                       isEditing &&
                                         "border-slate-900 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(250,243,233,0.98))] shadow-[0_28px_70px_rgba(48,35,20,0.18)] ring-2 ring-slate-900/10"
@@ -1473,9 +2110,9 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                                       )}
                                     />
 
-                                    <div className="relative z-10 space-y-3">
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0 flex flex-wrap items-center gap-2">
+                                    <div className="relative z-10 space-y-0.5 sm:space-y-3">
+                                      <div className="flex items-start justify-between gap-2.5 sm:gap-3">
+                                        <div className="min-w-0 flex flex-wrap items-center gap-1.5 sm:gap-2">
                                           <span
                                             className={clsx(
                                               "inline-flex items-center gap-1.5 rounded-full font-semibold uppercase transition",
@@ -1494,7 +2131,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                                           </span>
 
                                           {isEditing ? (
-                                            <div className="flex flex-wrap gap-2">
+                                            <div className="flex flex-wrap gap-1.5 sm:gap-2">
                                               {TIMELINE_EDIT_KIND_OPTIONS.map((option) => (
                                                 <button
                                                   key={option}
@@ -1503,7 +2140,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                                                     updateTimelineKind(dayIndex, item.id, option)
                                                   }
                                                   className={clsx(
-                                                    "rounded-full border px-3 py-1 text-[11px] font-medium transition",
+                                                    "rounded-full border px-2.5 py-1 text-[10px] font-medium transition sm:px-3 sm:text-[11px]",
                                                     visibleKind === option
                                                       ? "border-slate-900 bg-slate-900 text-white"
                                                       : "border-white/70 bg-white/72 text-slate-600 hover:border-slate-300"
@@ -1516,7 +2153,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                                           ) : null}
                                         </div>
 
-                                        <div className="flex shrink-0 items-center gap-2">
+                                        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                                           <button
                                             type="button"
                                             onClick={() => setItemEditing(item.id, !isEditing)}
@@ -1546,48 +2183,44 @@ export function TravelWorkspace({ travelPlanId }: Props) {
 
                                       <div
                                         className={clsx(
-                                          "grid grid-cols-[48px_minmax(0,1fr)] items-start gap-2.5 rounded-[1.2rem] border px-3 py-2.5 transition sm:grid-cols-[58px_minmax(0,1fr)]",
+                                          "grid grid-cols-[42px_minmax(0,1fr)] items-start gap-2 rounded-[1.1rem] border px-3 py-2 transition sm:grid-cols-[58px_minmax(0,1fr)] sm:gap-2.5 sm:rounded-[1.2rem] sm:py-2.5",
                                           isEditing
                                             ? "border-[#dcc6b2] bg-white shadow-[0_12px_28px_rgba(79,54,27,0.08)]"
                                             : "border-white/40 bg-white/42"
                                         )}
                                       >
-                                        <div className="pt-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <div className="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:pt-1.5 sm:text-[11px] sm:tracking-[0.14em]">
                                           时间
                                         </div>
                                         {isEditing ? (
-                                          <div className="grid grid-cols-2 gap-2">
-                                            <input
-                                              type="time"
+                                          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                                            <TimePickerField
+                                              label="开始"
                                               value={item.startTime}
-                                              onChange={(event) =>
+                                              onChange={(value) =>
                                                 updateTimelineItem(
                                                   dayIndex,
                                                   item.id,
                                                   "startTime",
-                                                  event.target.value
+                                                  value
                                                 )
                                               }
-                                              disabled={!isEditing}
-                                              className={timeFieldClasses}
                                             />
-                                            <input
-                                              type="time"
+                                            <TimePickerField
+                                              label="结束"
                                               value={item.endTime}
-                                              onChange={(event) =>
+                                              onChange={(value) =>
                                                 updateTimelineItem(
                                                   dayIndex,
                                                   item.id,
                                                   "endTime",
-                                                  event.target.value
+                                                  value
                                                 )
                                               }
-                                              disabled={!isEditing}
-                                              className={timeFieldClasses}
                                             />
                                           </div>
                                         ) : (
-                                          <div className="min-h-[36px] py-1.5 text-sm leading-6 text-slate-700">
+                                          <div className="min-h-[32px] py-1 text-[13px] leading-[1.55] text-slate-700 sm:min-h-[36px] sm:py-1.5 sm:text-sm sm:leading-6">
                                             {item.startTime || item.endTime
                                               ? `${item.startTime || "--:--"} - ${
                                                   item.endTime || "--:--"

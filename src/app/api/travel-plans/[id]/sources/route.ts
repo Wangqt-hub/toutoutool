@@ -12,6 +12,8 @@ type RouteContext = {
   };
 };
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request, context: RouteContext) {
   try {
     const session = await getServerSession();
