@@ -1,34 +1,28 @@
-﻿import Link from "next/link";
-import Script from "next/script";
+import Link from "next/link";
+import type { Route } from "next";
+import { cookies } from "next/headers";
 import { LandingSessionRestore } from "@/components/auth/landing-session-restore";
+import { SESSION_COOKIE_NAME, SESSION_HINT_COOKIE_NAME } from "@/lib/auth/session";
+import { getServerSession } from "@/lib/auth/server";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 import { Button } from "@/components/ui/button";
 
-const restoreBootstrapScript = `
-(function () {
-  try {
-    var cookie = document.cookie || "";
-    var hasSession = cookie.indexOf("tt_session=") !== -1;
-    var hasHint = cookie.indexOf("tt_auth_hint=1") !== -1;
+export default async function LandingPage() {
+  const cookieStore = cookies();
+  const hasSessionCookie = Boolean(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+  const session = hasSessionCookie ? await getServerSession() : null;
+  const hasSessionHint =
+    cookieStore.get(SESSION_HINT_COOKIE_NAME)?.value === "1";
+  const redirectTarget: Route | undefined = session
+    ? "/tools"
+    : hasSessionHint
+      ? "/auth/restore?to=%2Ftools"
+      : undefined;
 
-    if (!hasSession && hasHint) {
-      window.location.replace("/auth/restore?to=%2Ftools");
-    }
-  } catch (error) {
-    // Fall back to the client restore component when bootstrap checks fail.
-  }
-})();
-`;
-
-export default function LandingPage() {
   return (
     <>
-      <Script id="landing-restore-bootstrap" strategy="beforeInteractive">
-        {restoreBootstrapScript}
-      </Script>
-
       <main className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
-        <LandingSessionRestore />
+        <LandingSessionRestore redirectTo={redirectTarget} />
 
         <section className="flex w-full max-w-4xl flex-col items-center gap-10 md:flex-row">
           <div className="flex flex-1 flex-col items-start gap-6">
