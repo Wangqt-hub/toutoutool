@@ -28,23 +28,24 @@ const tools = [
 export default function ToolsHomePage() {
   return (
     <div className="space-y-6">
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">
+          <h1 className="mb-2 text-2xl font-bold text-slate-900">
             今天想和头头一起做什么？
           </h1>
           <p className="text-sm text-slate-600">
-            这里是你的专属小工具抽屉，后面还会一点点变得更丰富。
+            这里是你的小工具抽屉，后面还会一点点变得更丰富。
           </p>
         </div>
         <div className="self-start rounded-full bg-cream-100 px-3 py-1 text-[11px] text-slate-600 md:self-auto">
-          会员预留：未来会解锁更大的拼豆图纸、更聪明的旅行规划等功能。
+          会员预留：后面会解锁更大的拼豆图纸、更聪明的旅行规划等功能。
         </div>
       </section>
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {tools.map((tool) => (
           <Link key={tool.id} href={tool.href}>
-            <Card className="h-full cursor-pointer bg-white/80 hover:-translate-y-0.5 hover:shadow-lg transition-transform">
+            <Card className="h-full cursor-pointer bg-white/80 transition-transform hover:-translate-y-0.5 hover:shadow-lg">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-base font-semibold text-slate-900">
@@ -54,7 +55,7 @@ export default function ToolsHomePage() {
                     {tool.badge}
                   </span>
                 </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
+                <p className="text-xs leading-relaxed text-slate-600">
                   {tool.description}
                 </p>
               </div>
@@ -65,4 +66,3 @@ export default function ToolsHomePage() {
     </div>
   );
 }
-
