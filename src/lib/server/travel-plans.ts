@@ -62,3 +62,16 @@ export async function updateTravelPlan(
 
   return row ? normalizeTravelPlanArchive(row) : null;
 }
+
+export async function deleteTravelPlan(
+  session: AppSession,
+  travelPlanId: string
+) {
+  const row = await callCloudBaseFunction<TravelPlanRow | null>("toutoutool-user", {
+    action: "deleteTravelPlan",
+    ...buildSessionPayload(session),
+    travelPlanId,
+  });
+
+  return row ? normalizeTravelPlanArchive(row) : null;
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth/server";
 import {
+  deleteTravelPlan,
   getTravelPlan,
   updateTravelPlan,
 } from "@/lib/server/travel-plans";
@@ -95,6 +96,48 @@ export async function PATCH(request: Request, context: RouteContext) {
         success: false,
         error:
           error instanceof Error ? error.message : "Failed to update travel plan.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  try {
+    const session = await getServerSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Authentication required.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const data = await deleteTravelPlan(session, context.params.id);
+
+    if (!data) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Travel plan not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Failed to delete travel plan.",
       },
       { status: 500 }
     );

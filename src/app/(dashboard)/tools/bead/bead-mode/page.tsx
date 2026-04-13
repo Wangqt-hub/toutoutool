@@ -18,6 +18,8 @@ import {
 import { BeadWorkbenchCanvas, type BeadWorkbenchCanvasHandle } from "@/components/bead-tool/BeadWorkbenchCanvas";
 import { WorkspaceLimitDialog } from "@/components/bead-tool/WorkspaceLimitDialog";
 import { WorkspaceReplaceDialog } from "@/components/bead-tool/WorkspaceReplaceDialog";
+import { EmojiLoadingStage } from "@/components/mascot/EmojiLoadingStage";
+import { useMinimumLoadingDuration } from "@/components/mascot/useMinimumLoadingDuration";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getBrandCode, type ColorBrand } from "@/lib/bead/palette";
@@ -39,9 +41,55 @@ import {
   type BeadWorkspaceRecord,
   type BeadWorkspaceSummary,
 } from "@/lib/bead/workspaces";
+import type { LoadingStorySlide } from "@/lib/loading-story-presets";
 
 type SaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 type MobilePanel = "colors" | "progress" | "view";
+const BEAD_WORKSPACE_MIN_LOADING_MS = 3000;
+
+const beadWorkspaceLoadingSlides: LoadingStorySlide[] = [
+  {
+    id: "bead-workspace-load-01",
+    eyebrow: "Bead Workspace",
+    tag: "图纸",
+    status: "正在读取图纸",
+    headline: "正在打开拼豆工作台",
+    body: "先把图纸、色卡和制作进度取回来。",
+    image: "/loading-lab/emoji-heads/emoji_04.png",
+    alt: "思考表情",
+    accent: "#D7E6C7",
+    accentSoft: "#F5F9EF",
+    glow: "rgba(137, 177, 107, 0.22)"
+  },
+  {
+    id: "bead-workspace-load-02",
+    eyebrow: "Bead Workspace",
+    tag: "画布",
+    status: "正在准备画布",
+    headline: "正在恢复制作现场",
+    body: "画布、缩放和已完成豆格马上就位。",
+    image: "/loading-lab/emoji-heads/emoji_08.png",
+    alt: "平静微笑表情",
+    accent: "#F3CDBB",
+    accentSoft: "#FFF2EA",
+    glow: "rgba(233, 154, 107, 0.22)"
+  }
+];
+
+function getNow() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function waitForMinimumLoading(startedAt: number) {
+  const remaining = Math.max(
+    0,
+    BEAD_WORKSPACE_MIN_LOADING_MS - (getNow() - startedAt)
+  );
+
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, remaining);
+  });
+}
 
 interface LegacyPatternPayload {
   grid: BeadWorkspaceRecord["patternData"]["grid"];
@@ -125,6 +173,12 @@ export default function BeadModePage() {
   const dirtyRef = useRef(false);
   const persistSnapshotRef = useRef("");
   const workspaceId = searchParams.get("workspace");
+  const loadingStartedAtRef = useRef(getNow());
+  const navigatingDuringLoadRef = useRef(false);
+  const showInitialLoading = useMinimumLoadingDuration(
+    loading,
+    BEAD_WORKSPACE_MIN_LOADING_MS
+  );
 
   const readLegacyPattern = useCallback(() => {
     const legacyRaw = window.sessionStorage.getItem("currentBeadPattern");
@@ -178,6 +232,8 @@ export default function BeadModePage() {
     let cancelled = false;
 
     const loadWorkspace = async () => {
+      loadingStartedAtRef.current = getNow();
+      navigatingDuringLoadRef.current = false;
       setLoading(true);
       setError(null);
       initializedRef.current = false;
@@ -229,7 +285,13 @@ export default function BeadModePage() {
               return;
             }
 
-            router.replace(`/tools/bead/bead-mode?workspace=${legacyWorkspace.id}`);
+            navigatingDuringLoadRef.current = true;
+            await waitForMinimumLoading(loadingStartedAtRef.current);
+
+            if (!cancelled) {
+              router.replace(`/tools/bead/bead-mode?workspace=${legacyWorkspace.id}`);
+            }
+
             return;
           }
 
@@ -240,7 +302,13 @@ export default function BeadModePage() {
           }
 
           if (overview.current) {
-            router.replace(`/tools/bead/bead-mode?workspace=${overview.current.id}`);
+            navigatingDuringLoadRef.current = true;
+            await waitForMinimumLoading(loadingStartedAtRef.current);
+
+            if (!cancelled) {
+              router.replace(`/tools/bead/bead-mode?workspace=${overview.current.id}`);
+            }
+
             return;
           }
 
@@ -270,7 +338,7 @@ export default function BeadModePage() {
           );
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !navigatingDuringLoadRef.current) {
           setLoading(false);
         }
       }
@@ -894,22 +962,19 @@ export default function BeadModePage() {
     </Card>
   );
 
-  if (loading) {
+  if (showInitialLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#fff8ee,transparent_52%),linear-gradient(180deg,#f8f3ee,#f5eee6)] px-4">
-        <div className="space-y-4 text-center">
-          <div className="mx-auto h-16 w-16 animate-spin rounded-full border-4 border-accent-brown/20 border-t-accent-brown" />
-          <div>
-            <p className="text-base font-semibold text-slate-900">
-              正在加载拼豆工作台
-            </p>
-            <p className="mt-1 text-sm text-slate-500">正在恢复你的当前图纸与制作进度。</p>
-          </div>
-        </div>
+      <div className="flex h-full min-h-[calc(100dvh-var(--dashboard-header-height,76px))] items-center justify-center bg-[radial-gradient(circle_at_top,#fff8ee,transparent_52%),linear-gradient(180deg,#f8f3ee,#f5eee6)] px-4">
+        <EmojiLoadingStage
+          slides={beadWorkspaceLoadingSlides}
+          autoPlayMs={4100}
+          fullScreen={false}
+          showBrand={false}
+          className="w-full"
+        />
       </div>
     );
   }
-
   if (legacyPending && legacyCurrentWorkspace) {
     return (
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,#fff8ee,transparent_52%),linear-gradient(180deg,#f8f3ee,#f4eee7)]">

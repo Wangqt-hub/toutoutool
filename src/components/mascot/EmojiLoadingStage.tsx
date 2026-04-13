@@ -98,7 +98,9 @@ export function EmojiLoadingStage({
               </div>
             ) : null}
 
-            <div className={showBrand ? "mt-6" : ""}>{center}</div>
+            <div className={showBrand ? "mt-6 w-full" : "w-full"}>
+              {center}
+            </div>
 
             <div className="mt-7 w-full max-w-[34rem] text-center">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-[#8a6044]/68">

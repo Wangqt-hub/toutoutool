@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBeadWorkspaceLaunch } from "@/components/bead-tool/useBeadWorkspaceLaunch";
+import { EmojiLoadingStage } from "@/components/mascot/EmojiLoadingStage";
+import { useMinimumLoadingDuration } from "@/components/mascot/useMinimumLoadingDuration";
 import { BeadImagePreviewCard } from "@/components/bead-tool/BeadImagePreviewCard";
 import { AutoRefreshImage } from "@/components/ui/AutoRefreshImage";
 import {
@@ -47,6 +49,7 @@ import {
 } from "@/lib/bead/imageProcessor";
 import { PIXEL_STYLES } from "@/lib/bead/pixelStyles";
 import { createWorkspaceName } from "@/lib/bead/workspaces";
+import type { LoadingStorySlide } from "@/lib/loading-story-presets";
 
 function clampSize(value: number): number {
   return Math.max(8, Math.min(128, Math.round(value)));
@@ -184,8 +187,78 @@ function getSmoothedGenerationProgress(
   );
 }
 
+function getBeadAIGenerationCopy(progress: number) {
+  if (progress < 28) {
+    return {
+      title: "正在上传参考图",
+      detail: "图片和风格要求正在发送给 AI。"
+    };
+  }
+
+  if (progress < 62) {
+    return {
+      title: "正在理解画面风格",
+      detail: "AI 正在判断主体、颜色和适合像素化的细节。"
+    };
+  }
+
+  if (progress < 90) {
+    return {
+      title: "正在生成拼豆参考图",
+      detail: "表情会继续循环，结果准备好后自动进入下一步。"
+    };
+  }
+
+  return {
+    title: "正在保存生成结果",
+    detail: "把结果图写入历史记录，马上就能继续生成图纸。"
+  };
+}
+
 const HISTORY_CACHE_KEY = "bead-ai-history-cache-v1";
 const SIGNED_IMAGE_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+
+const beadAiGenerationSlides: LoadingStorySlide[] = [
+  {
+    id: "bead-ai-generate-01",
+    eyebrow: "AI Generation",
+    tag: "上传",
+    status: "正在上传参考图",
+    headline: "正在准备 AI 参考图",
+    body: "先把原图和风格要求整理好。",
+    image: "/loading-lab/emoji-heads/emoji_08.png",
+    alt: "平静微笑表情",
+    accent: "#F3CDBB",
+    accentSoft: "#FFF2EA",
+    glow: "rgba(233, 154, 107, 0.22)"
+  },
+  {
+    id: "bead-ai-generate-02",
+    eyebrow: "AI Generation",
+    tag: "绘制",
+    status: "AI 正在绘制",
+    headline: "正在生成拼豆参考图",
+    body: "会保留适合像素化的形状和颜色关系。",
+    image: "/loading-lab/emoji-heads/emoji_05.png",
+    alt: "专注表情",
+    accent: "#C9DDF6",
+    accentSoft: "#EFF6FF",
+    glow: "rgba(111, 157, 219, 0.2)"
+  },
+  {
+    id: "bead-ai-generate-03",
+    eyebrow: "AI Generation",
+    tag: "保存",
+    status: "正在保存结果",
+    headline: "正在收尾生成结果",
+    body: "结果图和历史记录准备好后就能继续生成图纸。",
+    image: "/loading-lab/emoji-heads/emoji_01.png",
+    alt: "开心表情",
+    accent: "#F6D9A9",
+    accentSoft: "#FFF7E3",
+    glow: "rgba(239, 189, 88, 0.24)"
+  }
+];
 
 type CachedHistoryPayload = {
   etag: string | null;
@@ -340,6 +413,7 @@ export default function AIGeneratePage() {
   const isTaskRunning =
     aiSubmitting ||
     Boolean(currentTaskItem && isAIGenerationActive(currentTaskItem.status));
+  const showAIGenerationLoading = useMinimumLoadingDuration(isTaskRunning, 3000);
   const hasWorkingSelectionRef = useRef(false);
   const selectedHistoryIdRef = useRef<string | null>(null);
   const canvasWidthRef = useRef(canvasWidth);
@@ -1049,6 +1123,13 @@ export default function AIGeneratePage() {
     },
   ][currentStep];
 
+  const displayedGenerationProgress = getDisplayedProgress(
+    selectedHistory || currentTaskItem
+  );
+  const beadAIGenerationCopy = getBeadAIGenerationCopy(
+    displayedGenerationProgress
+  );
+
   const preview = (() => {
     if (currentStep === 3 && grid && palette) {
       return (
@@ -1368,7 +1449,7 @@ export default function AIGeneratePage() {
         preview={preview}
         mobilePreviewPlacement={currentStep === 2 ? "before" : "after"}
         footer={footer}
-        floatingSlot={historyPanel}
+        floatingSlot={showAIGenerationLoading ? undefined : historyPanel}
       >
         {currentStep === 0 ? (
         <ImageUploadStep
@@ -1406,6 +1487,22 @@ export default function AIGeneratePage() {
           disabled={isTaskRunning}
         />
       ) : currentStep === 2 ? (
+        showAIGenerationLoading ? (
+          <Card className="overflow-hidden border-rose-100 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(255,241,242,0.96),rgba(255,247,237,0.96))] p-0 shadow-[0_22px_60px_rgba(244,63,94,0.12)]">
+            <EmojiLoadingStage
+              slides={beadAiGenerationSlides}
+              title={beadAIGenerationCopy.title}
+              detail={beadAIGenerationCopy.detail}
+              eyebrow={
+                (selectedHistory || currentTaskItem)?.statusLabel ?? "AI 正在生成"
+              }
+              progressRatio={Math.max(displayedGenerationProgress / 100, 0.1)}
+              autoPlayMs={4200}
+              fullScreen={false}
+              showBrand={false}
+            />
+          </Card>
+        ) : (
         <div className="space-y-4">
           <Card className="border-rose-100 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(255,241,242,0.96),rgba(255,247,237,0.96))] shadow-[0_22px_60px_rgba(244,63,94,0.12)]">
             <div className="space-y-5">
@@ -1479,6 +1576,7 @@ export default function AIGeneratePage() {
             </div>
           </Card>
         </div>
+        )
       ) : (
         <div className="space-y-4">
           <PatternSettings

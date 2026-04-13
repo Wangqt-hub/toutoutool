@@ -305,6 +305,20 @@ async function patchOne(table, query, body) {
   });
 }
 
+async function deleteOne(table, query) {
+  const existing = await getFirstRow(table, { query });
+
+  if (!existing) {
+    return null;
+  }
+
+  await rdbRequest("DELETE", table, {
+    query,
+  });
+
+  return existing;
+}
+
 function toSubscriptionTier(value) {
   return value === "premium" ? "premium" : "free";
 }
@@ -534,6 +548,18 @@ async function handleUpdateTravelPlan(event) {
   return normalizeTravelPlanRow(nextRow);
 }
 
+async function handleDeleteTravelPlan(event) {
+  await ensureProfile(event.userId, event.phoneNumber || null);
+
+  const travelPlanId = requireString(event.travelPlanId, "travelPlanId");
+  const row = await deleteOne("travel_plans", {
+    id: eq(travelPlanId),
+    user_id: eq(event.userId),
+  });
+
+  return normalizeTravelPlanRow(row);
+}
+
 async function handleCreateIdeaBox(event) {
   await ensureProfile(event.userId, event.phoneNumber || null);
 
@@ -569,6 +595,8 @@ exports.main = async (event = {}) => {
         return success(await handleCreateTravelPlan(event));
       case "updateTravelPlan":
         return success(await handleUpdateTravelPlan(event));
+      case "deleteTravelPlan":
+        return success(await handleDeleteTravelPlan(event));
       case "createIdeaBox":
         return success(await handleCreateIdeaBox(event));
       default:
