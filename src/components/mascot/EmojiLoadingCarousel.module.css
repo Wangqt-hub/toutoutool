@@ -249,11 +249,11 @@
 }
 
 .layerReveal {
-  opacity: 0;
-  filter: blur(10px);
-  transform: translateY(0.45rem) scale(0.985);
+  opacity: 1;
+  filter: none;
+  transform: translateY(0) scale(1);
   transform-origin: center;
-  animation: revealLayer var(--layer-duration) cubic-bezier(0.22, 0.84, 0.26, 1) var(--layer-delay) forwards;
+  animation: revealLayer var(--layer-duration) cubic-bezier(0.22, 0.84, 0.26, 1) var(--layer-delay) both;
 }
 
 .layerShape {
@@ -410,6 +410,21 @@
   .layerReveal,
   .eraseMask {
     animation: none;
+  }
+
+  .faceContent {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+
+  .layerReveal {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+
+  .eraseMask {
+    display: none;
   }
 }
 

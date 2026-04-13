@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -44,6 +45,8 @@ const DEFAULT_AUTOPLAY_MS = 4200;
 const emojiVisualSequence = Object.keys(emojiHeadLayers)
   .sort((left, right) => left.localeCompare(right, "en", { numeric: true }))
   .filter((key): key is EmojiHeadLayerKey => key in emojiHeadLayers);
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 const fallbackSlides: LoadingStorySlide[] = [
   {
@@ -110,7 +113,7 @@ export function EmojiLoadingCarousel({
     return () => window.clearInterval(timer);
   }, [autoPlayMs, normalizedSlides.length]);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (emojiVisualSequence.length === 0) {
       return undefined;
     }
@@ -139,11 +142,6 @@ export function EmojiLoadingCarousel({
   const activeVisualKey =
     emojiVisualSequence[activeVisualIndex] ?? activeSlide.imageKey;
   const activeVector = emojiHeadLayers[activeVisualKey];
-  const faceVisibilityStyle = hasRandomizedVisualStart
-    ? undefined
-    : ({
-        opacity: 0
-      } as CSSProperties);
   const activeLayers = emojiHeadLayerOrder
     .map((layerName) => ({
       layerName,
@@ -204,7 +202,7 @@ export function EmojiLoadingCarousel({
           key={activeVisualKey}
           className={styles.slide}
         >
-          <div className={styles.faceViewport} style={faceVisibilityStyle}>
+          <div className={styles.faceViewport}>
             <div className={styles.faceContent}>
               <svg
                 viewBox={activeVector.viewBox}

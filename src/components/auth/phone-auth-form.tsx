@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   Suspense,
@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { Eye, EyeOff } from "lucide-react";
+import { motion } from "framer-motion";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -499,170 +500,198 @@ function PhoneAuthFormContent(props: { intent: AuthIntent }) {
       : "手机快捷登录";
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-cream-50 px-4 py-6 sm:px-6 sm:py-8">
-      <div className="absolute inset-0">
-        <div className="absolute -left-24 top-0 h-72 w-72 rounded-full bg-blush/40 blur-3xl" />
-        <div className="absolute right-0 top-16 h-80 w-80 rounded-full bg-accent-yellow/25 blur-3xl" />
-        <div className="absolute bottom-0 left-1/4 h-64 w-64 rounded-full bg-accent-brown/8 blur-3xl" />
-      </div>
+    <main className="relative flex min-h-screen overflow-hidden bg-cream-50 sm:bg-white selection:bg-accent-yellow/50">
+      {/* 桌面端大屏左侧插画区 / 手机端背景 */}
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        transition={{ duration: 0.6 }}
+        className="absolute inset-0 flex flex-col md:relative md:w-[55%] md:bg-cream-50 bg-cream-100 overflow-hidden"
+      >
+        {/* 背景光晕 (两端共有) */}
+        <motion.div animate={{ scale: [1, 1.1, 1], rotate: [0, 5, 0] }} transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }} className="absolute -left-20 top-10 h-72 w-72 rounded-full bg-blush/60 blur-3xl" />
+        <motion.div animate={{ scale: [1, 1.2, 1], x: [0, 20, 0] }} transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }} className="absolute right-10 bottom-10 h-80 w-80 rounded-full bg-accent-yellow/50 blur-3xl" />
+        
+        {/* 只有在桌面端才显示的超大插画文字 */}
+        <div className="relative z-10 hidden h-full flex-col justify-center px-12 lg:px-24 md:flex">
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }} className="space-y-6">
+            <div className="inline-flex items-center rounded-full bg-white/70 px-4 py-1.5 text-xs font-semibold tracking-widest text-accent-brown shadow-sm backdrop-blur-sm">
+              欢迎回来
+            </div>
+            <h2 className="text-4xl font-black text-slate-800 lg:text-5xl leading-tight">
+              每次一点点，<br />也会是很厉害的进步。
+            </h2>
+            <p className="text-slate-600 text-lg leading-relaxed max-w-sm">
+              把乱乱的思绪都收拾好，放进小工具里去。
+            </p>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3, duration: 0.8, type: "spring" }} className="mt-12 flex h-64 w-64 items-center justify-center lg:h-80 lg:w-80">
+            <CapybaraHero variant="hero" size="lg" className="drop-shadow-2xl h-full w-full object-contain" priority />
+          </motion.div>
+        </div>
+      </motion.div>
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md items-center justify-center">
-        <Card className="w-full overflow-hidden border-white/70 bg-white/82 p-0 shadow-[0_20px_70px_rgba(154,121,85,0.14)] backdrop-blur-xl">
-          <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(244,190,184,0.35),transparent_72%)]" />
+      {/* 右侧表单区 */}
+      <div className="relative z-10 flex w-full flex-col items-center justify-center p-4 md:w-[45%] md:p-8 lg:p-12">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
+          className="w-full max-w-md overflow-hidden rounded-[2.5rem] border border-white/60 bg-white/70 p-6 shadow-cute backdrop-blur-2xl sm:p-10"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-3 pt-2">
+              <div className="inline-flex items-center rounded-full bg-cream-100/80 px-4 py-1.5 text-xs font-semibold tracking-[0.2em] text-accent-brown shadow-sm">
+                头头工具
+              </div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-900">{panelTitle}</h1>
+            </div>
+            <div className="rounded-[1.35rem] bg-cream-50 p-2 shadow-inner md:hidden">
+              <CapybaraHero variant="figure" size="sm" />
+            </div>
+          </div>
 
-          <div className="relative p-5 sm:p-7">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-5 pt-2">
-                <div className="inline-flex items-center rounded-full border border-white/70 bg-cream-100/95 px-6 py-2.5 text-[15px] font-semibold tracking-[0.24em] text-accent-brown shadow-[0_8px_24px_rgba(154,121,85,0.12)]">
-                  头头工具
-                </div>
-                <h1 className="pt-1 text-[2rem] font-bold tracking-[0.02em] text-slate-900 sm:text-[2.2rem]">{panelTitle}</h1>
-              </div>
-              <div className="mt-1 rounded-[1.35rem] bg-cream-50/90 p-3 shadow-sm ring-1 ring-white/80">
-                <CapybaraHero variant="figure" size="sm" />
-              </div>
+          {!isSignUp ? (
+            <div className="mt-6">
+              <Button
+                type="button"
+                variant={signInMode === "password" ? "secondary" : "ghost"}
+                className="w-full h-11"
+                onClick={() => {
+                  setSignInMode((current) =>
+                    current === "password" ? "otp" : "password"
+                  );
+                  setError(null);
+                  setMessage(null);
+                }}
+              >
+                {signInMode === "password" ? "切换短信快捷登录" : "切换密码登录"}
+              </Button>
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div className="space-y-2">
+              <FieldLabel>手机号</FieldLabel>
+              <TextField
+                type="tel"
+                required
+                inputMode="tel"
+                value={phone}
+                onChange={(event) => handlePhoneChange(event.target.value)}
+                placeholder="请输入手机号"
+                autoComplete="tel"
+              />
             </div>
 
-            {!isSignUp ? (
-              <div className="mt-5">
-                <Button
-                  type="button"
-                  variant={signInMode === "password" ? "secondary" : "ghost"}
-                  className="w-full"
-                  onClick={() => {
-                    setSignInMode((current) =>
-                      current === "password" ? "otp" : "password"
-                    );
-                    setError(null);
-                    setMessage(null);
-                  }}
-                >
-                  {signInMode === "password" ? "手机快捷登录" : "返回密码登录"}
-                </Button>
+            {showCodeField ? (
+              <div className="space-y-2">
+                <FieldLabel>短信验证码</FieldLabel>
+                <div className="flex gap-2">
+                  <TextField
+                    type="text"
+                    required
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    placeholder="输入 6 位验证码"
+                    autoComplete="one-time-code"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleSendCode}
+                    disabled={restoringSession || sending || cooldown > 0}
+                    className="min-w-[112px] shrink-0 font-semibold"
+                  >
+                    {restoringSession
+                      ? "检查中"
+                      : sending
+                        ? "发送中"
+                        : cooldown > 0
+                          ? `${cooldown}s`
+                          : "发送验证码"}
+                  </Button>
+                </div>
               </div>
             ) : null}
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            {showPrimaryPassword ? (
+              <PasswordField
+                value={password}
+                onChange={setPassword}
+                placeholder={
+                  needsPasswordForOtp ? "设置登录密码" : "请输入密码"
+                }
+                autoComplete={
+                  isSignUp || needsPasswordForOtp ? "new-password" : "current-password"
+                }
+              />
+            ) : null}
+
+            {showConfirmPassword ? (
               <div className="space-y-2">
-                <FieldLabel>手机号</FieldLabel>
+                <FieldLabel>确认密码</FieldLabel>
                 <TextField
-                  type="tel"
-                  required
-                  inputMode="tel"
-                  value={phone}
-                  onChange={(event) => handlePhoneChange(event.target.value)}
-                  placeholder="请输入手机号"
-                  autoComplete="tel"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="再次输入密码"
+                  autoComplete="new-password"
                 />
               </div>
+            ) : null}
 
-              {showCodeField ? (
-                <div className="space-y-2">
-                  <FieldLabel>短信验证码</FieldLabel>
-                  <div className="flex gap-2">
-                    <TextField
-                      type="text"
-                      required
-                      inputMode="numeric"
-                      pattern="[0-9]{6}"
-                      value={code}
-                      onChange={(event) => setCode(event.target.value)}
-                      placeholder="输入 6 位验证码"
-                      autoComplete="one-time-code"
-                    />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={handleSendCode}
-                      disabled={restoringSession || sending || cooldown > 0}
-                      className="min-w-[112px] shrink-0"
-                    >
-                      {restoringSession
-                        ? "检查中"
-                        : sending
-                          ? "发送中"
-                          : cooldown > 0
-                            ? `${cooldown}s`
-                            : "发送验证码"}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-
-              {showPrimaryPassword ? (
-                <PasswordField
-                  value={password}
-                  onChange={setPassword}
-                  placeholder={
-                    needsPasswordForOtp ? "设置登录密码" : "请输入密码"
-                  }
-                  autoComplete={
-                    isSignUp || needsPasswordForOtp ? "new-password" : "current-password"
-                  }
-                />
-              ) : null}
-
-              {showConfirmPassword ? (
-                <div className="space-y-2">
-                  <FieldLabel>确认密码</FieldLabel>
-                  <TextField
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    placeholder="再次输入密码"
-                    autoComplete="new-password"
-                  />
-                </div>
-              ) : null}
-
+            <motion.div layout>
               {error ? (
-                <div className="rounded-[1.3rem] border border-red-100 bg-red-50/90 px-4 py-3 text-sm leading-6 text-red-600">
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600 shadow-inner">
                   {error}
-                </div>
+                </motion.div>
               ) : null}
 
               {message ? (
-                <div className="rounded-[1.3rem] border border-emerald-100 bg-emerald-50/90 px-4 py-3 text-sm leading-6 text-emerald-700">
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 shadow-inner">
                   {message}
-                </div>
+                </motion.div>
               ) : null}
+            </motion.div>
 
-              <Button
-                type="submit"
-                size="lg"
-                className="mt-2 w-full"
-                disabled={restoringSession || submitting}
-              >
-                {restoringSession
-                  ? "检查已有登录状态…"
-                  : submitting
-                    ? isSignUp
-                      ? "正在注册…"
-                      : signInMode === "password"
-                        ? "正在登录…"
-                        : otpState?.isExistingUser === false
-                          ? "正在创建账号…"
-                          : "正在验证…"
-                    : isSignUp
-                      ? "注册"
-                      : signInMode === "password"
-                        ? "登录"
-                        : otpState?.isExistingUser === false
-                          ? "验证并继续"
-                          : "快捷登录"}
-              </Button>
-            </form>
+            <Button
+              type="submit"
+              size="lg"
+              className="mt-6 w-full h-12 shadow-cute"
+              disabled={restoringSession || submitting}
+            >
+              {restoringSession
+                ? "检查已有登录状态…"
+                : submitting
+                  ? isSignUp
+                    ? "正在注册…"
+                    : signInMode === "password"
+                      ? "正在登录…"
+                      : otpState?.isExistingUser === false
+                        ? "正在创建账号…"
+                        : "正在验证…"
+                  : isSignUp
+                    ? "注册"
+                    : signInMode === "password"
+                      ? "登录"
+                      : otpState?.isExistingUser === false
+                        ? "验证并继续"
+                        : "快捷登录"}
+            </Button>
+          </form>
 
-            <div className="mt-6 border-t border-cream-100 pt-5 text-center text-sm text-slate-500">
-              <p className="inline-flex items-center justify-center gap-1.5">
-                {isSignUp ? "已经有账号了？" : "还没有账号？"}
-                <Link href={switchHref} className="font-medium text-accent-brown">
-                  {isSignUp ? "去登录" : "去注册"}
-                </Link>
-              </p>
-            </div>
+          <div className="mt-8 border-t border-slate-100/50 pt-6 text-center text-sm text-slate-500">
+            <p className="inline-flex items-center justify-center gap-1.5">
+              {isSignUp ? "已经有账号了？" : "还没有账号？"}
+              <Link href={switchHref} className="font-bold text-accent-brown hover:underline">
+                {isSignUp ? "去登录" : "去注册"}
+              </Link>
+            </p>
           </div>
-        </Card>
+        </motion.div>
       </div>
     </main>
   );

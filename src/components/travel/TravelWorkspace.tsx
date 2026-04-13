@@ -10,7 +10,6 @@ import {
   CalendarDays,
   Check,
   Coffee,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -26,6 +25,8 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmojiLoadingStage } from "@/components/mascot/EmojiLoadingStage";
+import { useMinimumLoadingDuration } from "@/components/mascot/useMinimumLoadingDuration";
 import { readTravelApiResponse } from "@/lib/travel/client";
 import {
   type BudgetLevel,
@@ -49,6 +50,7 @@ import {
   sortTravelItineraryItems,
   toEditableTravelSnapshot,
 } from "@/lib/travel/utils";
+import type { LoadingStorySlide } from "@/lib/loading-story-presets";
 
 type Props = {
   travelPlanId: string;
@@ -56,6 +58,77 @@ type Props = {
 
 type OverlayTone = "running" | "success" | "error";
 type VisibleTimelineKind = Exclude<ItineraryItemKind, "shopping">;
+
+const travelWorkspaceLoadingSlides: LoadingStorySlide[] = [
+  {
+    id: "travel-workspace-load-01",
+    eyebrow: "Trip Workspace",
+    tag: "档案",
+    status: "正在读取旅行档案",
+    headline: "正在打开旅行工作台",
+    body: "目的地、日期和草稿内容正在恢复。",
+    image: "/loading-lab/emoji-heads/emoji_04.png",
+    alt: "思考表情",
+    accent: "#D7E6C7",
+    accentSoft: "#F5F9EF",
+    glow: "rgba(137, 177, 107, 0.22)"
+  },
+  {
+    id: "travel-workspace-load-02",
+    eyebrow: "Trip Workspace",
+    tag: "时间线",
+    status: "正在准备时间线",
+    headline: "正在整理行程内容",
+    body: "天数、地点和参考链接马上就位。",
+    image: "/loading-lab/emoji-heads/emoji_08.png",
+    alt: "平静微笑表情",
+    accent: "#F3CDBB",
+    accentSoft: "#FFF2EA",
+    glow: "rgba(233, 154, 107, 0.22)"
+  }
+];
+
+const travelGenerationSlides: LoadingStorySlide[] = [
+  {
+    id: "travel-generate-01",
+    eyebrow: "Qwen Planning",
+    tag: "同步",
+    status: "正在同步旅行档案",
+    headline: "正在整理出行条件",
+    body: "先确认目的地、日期、预算和偏好。",
+    image: "/loading-lab/emoji-heads/emoji_08.png",
+    alt: "平静微笑表情",
+    accent: "#F3CDBB",
+    accentSoft: "#FFF2EA",
+    glow: "rgba(233, 154, 107, 0.22)"
+  },
+  {
+    id: "travel-generate-02",
+    eyebrow: "Qwen Planning",
+    tag: "生成",
+    status: "正在生成时间线",
+    headline: "正在规划每天的安排",
+    body: "AI 正在把地点、节奏和交通串起来。",
+    image: "/loading-lab/emoji-heads/emoji_05.png",
+    alt: "专注表情",
+    accent: "#C9DDF6",
+    accentSoft: "#EFF6FF",
+    glow: "rgba(111, 157, 219, 0.2)"
+  },
+  {
+    id: "travel-generate-03",
+    eyebrow: "Qwen Planning",
+    tag: "收尾",
+    status: "正在补齐细节",
+    headline: "正在润色行程细节",
+    body: "交通、花费和提醒正在补齐。",
+    image: "/loading-lab/emoji-heads/emoji_01.png",
+    alt: "开心表情",
+    accent: "#F6D9A9",
+    accentSoft: "#FFF7E3",
+    glow: "rgba(239, 189, 88, 0.24)"
+  }
+];
 
 const DAY_SURFACES = [
   {
@@ -1069,6 +1142,8 @@ function GenerationOverlay({
   model: string;
 }) {
   const meta = getOverlayMeta(progress, tone);
+  const progressRatio =
+    tone === "error" ? 1 : Math.max(progress / 100, tone === "success" ? 1 : 0.1);
 
   return (
     <AnimatePresence>
@@ -1077,65 +1152,20 @@ function GenerationOverlay({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-[rgba(16,13,11,0.72)] backdrop-blur-xl"
+          className="fixed inset-0 z-50 bg-[rgba(247,239,231,0.9)] backdrop-blur-xl"
         >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(247,215,165,0.24),transparent_42%),radial-gradient(circle_at_bottom,rgba(67,110,115,0.2),transparent_32%)]" />
-
-          <div className="relative flex min-h-screen items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.98 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className="w-full max-w-sm overflow-hidden rounded-[2.4rem] border border-white/12 bg-[linear-gradient(180deg,rgba(28,24,22,0.9),rgba(23,21,20,0.96))] p-6 text-white shadow-[0_32px_120px_rgba(0,0,0,0.45)]"
-            >
-              <div className="relative flex h-24 items-center justify-center">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 7, ease: "linear", repeat: Infinity }}
-                  className="absolute h-24 w-24 rounded-full border border-white/12"
-                />
-                <motion.div
-                  animate={{ rotate: -360 }}
-                  transition={{ duration: 5, ease: "linear", repeat: Infinity }}
-                  className="absolute h-16 w-16 rounded-full border border-dashed border-[#f3d4a2]/70"
-                />
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
-                  {tone === "success" ? (
-                    <CheckCircle2 className="h-6 w-6 text-[#f8ddb0]" />
-                  ) : tone === "error" ? (
-                    <AlertCircle className="h-6 w-6 text-[#ffcfaa]" />
-                  ) : (
-                    <Loader2 className="h-6 w-6 animate-spin text-[#f8ddb0]" />
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-2 text-center">
-                <p className="text-[11px] uppercase tracking-[0.34em] text-white/48">
-                  Qwen Planning
-                </p>
-                <h2 className="text-[1.75rem] font-black tracking-[-0.05em] text-white">
-                  {meta.title}
-                </h2>
-                <p className="text-sm leading-6 text-white/68">{meta.detail}</p>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                  <motion.div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,#f8ddb0_0%,#c9e3dc_100%)]"
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-white/56">
-                  <span>{model}</span>
-                  <span>{Math.round(progress)}%</span>
-                </div>
-              </div>
-            </motion.div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.96),rgba(248,240,231,0.68)_36%,rgba(236,221,205,0.62)_100%)]" />
+          <div className="relative z-10">
+            <EmojiLoadingStage
+              slides={travelGenerationSlides}
+              title={meta.title}
+              detail={meta.detail}
+              eyebrow={model}
+              progressRatio={progressRatio}
+              autoPlayMs={4300}
+              fullScreen
+              showBrand={false}
+            />
           </div>
         </motion.div>
       ) : null}
@@ -1160,6 +1190,8 @@ export function TravelWorkspace({ travelPlanId }: Props) {
   const [error, setError] = useState("");
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [pendingScrollItemId, setPendingScrollItemId] = useState<string | null>(null);
+  const showInitialLoading = useMinimumLoadingDuration(loading, 3000);
+  const showGenerationLoading = useMinimumLoadingDuration(showGenerationOverlay, 3000);
 
   useEffect(() => {
     async function loadPlan() {
@@ -1622,17 +1654,19 @@ export function TravelWorkspace({ travelPlanId }: Props) {
     router.push("/tools/travel");
   }
 
-  if (loading) {
+  if (showInitialLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="inline-flex items-center gap-3 rounded-full bg-white/80 px-4 py-2 text-sm text-slate-600 shadow-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          正在加载旅行工作台…
-        </div>
+      <div className="flex min-h-[68vh] items-center justify-center rounded-[2rem] bg-[radial-gradient(circle_at_top,#fff8ee,transparent_52%),linear-gradient(180deg,#f8f3ee,#f5eee6)]">
+        <EmojiLoadingStage
+          slides={travelWorkspaceLoadingSlides}
+          autoPlayMs={4100}
+          fullScreen={false}
+          showBrand={false}
+          className="w-full"
+        />
       </div>
     );
   }
-
   if (!plan) {
     return (
       <div className="rounded-[2rem] border border-rose-200 bg-rose-50 px-6 py-8 text-sm text-rose-700">
@@ -1648,7 +1682,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
   return (
     <>
       <GenerationOverlay
-        visible={showGenerationOverlay}
+        visible={showGenerationLoading}
         progress={generationProgress}
         tone={generationTone}
         model={plan.generationModel || "qwen3.6-plus"}

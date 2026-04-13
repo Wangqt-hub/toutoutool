@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { ArrowRight, Clock3, History, Layers3, PlayCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ImportModeSelector } from "@/components/bead-tool/ImportModeSelector";
@@ -182,87 +183,68 @@ function CurrentWorkspaceCard({
   loading?: boolean;
 }) {
   return (
-    <Card className="overflow-hidden border-white/80 bg-white/92 p-0 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-      <div className="flex items-stretch">
-        <div className="flex shrink-0 items-center justify-center self-stretch bg-cream-50 px-2 py-2 sm:px-4 sm:py-4">
+    <motion.div
+      whileHover={{ y: -8, scale: 1.02, rotate: -1 }}
+      transition={{ type: "spring", bounce: 0.4 }}
+      className="relative max-w-sm"
+    >
+      <div className="overflow-hidden rounded-xl border border-slate-200/50 bg-white p-3 shadow-cute pb-8">
+        <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-cream-50/50">
           {workspace.thumbnailUrl ? (
-            <div className="flex h-[9.95rem] w-[9.95rem] items-center justify-center rounded-[24px] border border-cream-100 bg-cream-50 p-2 shadow-sm sm:h-full sm:min-h-[12.5rem] sm:w-auto sm:aspect-square sm:rounded-[28px] sm:p-4">
-              <AutoRefreshImage
-                src={workspace.thumbnailUrl}
-                onRefreshSrc={onRefreshThumbnail}
-                alt="当前图纸缩略图"
-                loading="eager"
-                decoding="async"
-                fetchPriority="high"
-                className="h-full w-full object-contain"
-              />
-            </div>
+            <AutoRefreshImage
+              src={workspace.thumbnailUrl}
+              onRefreshSrc={onRefreshThumbnail}
+              alt="当前图纸缩略图"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+              className="h-full w-full object-contain"
+            />
           ) : (
-            <div className="flex h-[9.95rem] w-[9.95rem] items-center justify-center rounded-[24px] border border-dashed border-cream-100 bg-cream-50 text-slate-400 sm:h-full sm:min-h-[12.5rem] sm:w-auto sm:aspect-square sm:rounded-[28px]">
-              <Layers3 className="h-11 w-11" />
+            <div className="flex h-full w-full items-center justify-center text-slate-300">
+              <Layers3 className="h-12 w-12" />
             </div>
           )}
+          <div className="absolute -top-1 left-1/2 h-4 w-12 -translate-x-1/2 rotate-2 bg-[#FFFDE7]/80 shadow-sm backdrop-blur" />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col justify-between gap-2 p-2.5 pr-2 sm:gap-4 sm:p-5">
-          <div className="space-y-2 sm:space-y-3">
-            <div className="space-y-0.5 sm:space-y-1">
-              <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-slate-900 sm:text-lg">
-                {workspace.name}
-              </h3>
-              <p className="text-[11px] leading-tight text-slate-500 sm:mt-1 sm:text-xs">
-                {workspace.width} × {workspace.height} · {workspace.brand}
-              </p>
-            </div>
-
-            <p className="text-[10px] font-medium leading-tight text-slate-500 sm:hidden">
-              最近打开 {formatDateTime(workspace.lastOpenedAt)}
+        <div className="mt-4 flex flex-col gap-3 px-1">
+          <div>
+            <h3 className="truncate font-bold text-lg text-slate-800">
+              {workspace.name}
+            </h3>
+            <p className="text-xs font-semibold text-slate-500">
+              {workspace.width} × {workspace.height} · {workspace.brand}
             </p>
+          </div>
 
-            <div className="hidden rounded-xl bg-cream-50/80 px-2.5 py-2 sm:block sm:rounded-2xl sm:px-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                最近打开
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {formatDateTime(workspace.lastOpenedAt)}
-              </p>
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[11px] font-bold text-slate-600">
+              <span>完成度</span>
+              <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
             </div>
-
-            <div className="space-y-1.5 sm:space-y-2">
-              <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-600 sm:text-xs">
-                <span>豆格完成度</span>
-                <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-cream-100 sm:h-2.5">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-green-500"
-                  style={{ width: `${workspace.progress.beanPercentage}%` }}
-                />
-              </div>
-              <p className="text-[11px] text-slate-500 sm:text-xs">
-                {workspace.progress.completedBeans} / {workspace.progress.totalBeans}
-              </p>
+            <div className="h-1.5 overflow-hidden rounded-full bg-cream-100">
+              <div
+                className="h-full rounded-full bg-accent-brown"
+                style={{ width: `${workspace.progress.beanPercentage}%` }}
+              />
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              size="sm"
-              className="h-8 px-3 text-xs sm:h-9 sm:px-4 sm:text-sm"
-              onClick={onOpen}
-              disabled={loading}
-            >
-              继续制作
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            type="button"
+            className="mt-2 w-full rounded-full font-bold shadow-sm h-10 hover:-translate-y-0.5 transition-all"
+            onClick={onOpen}
+            disabled={loading}
+          >
+            继续制作
+            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
-    </Card>
+    </motion.div>
   );
 }
-
 function HistoryWorkspaceCard({
   workspace,
   onOpen,
@@ -275,46 +257,54 @@ function HistoryWorkspaceCard({
   loading?: boolean;
 }) {
   return (
-    <Card className="min-w-[340px] shrink-0 border-white/80 bg-white/92 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:min-w-0">
-      <div className="flex items-stretch gap-4">
-        <WorkspaceSquareThumbnail
-          src={workspace.thumbnailUrl}
-          alt="历史图纸缩略图"
-          onRefreshSrc={onRefreshThumbnail}
-        />
+    <motion.div
+      whileHover={{ y: -5, scale: 1.05, rotate: 2 }}
+      transition={{ type: "spring", bounce: 0.4 }}
+      className="relative shrink-0 md:min-w-[180px] w-[200px]"
+    >
+      <div className="overflow-hidden rounded-xl border border-slate-200/50 bg-white p-2.5 shadow-sm transition-shadow hover:shadow-cute pb-6 group cursor-pointer" onClick={onOpen}>
+        <div className="relative aspect-square w-full overflow-hidden rounded-md bg-cream-50 group-hover:bg-cream-100 transition-colors">
+          <WorkspaceSquareThumbnail
+            src={workspace.thumbnailUrl}
+            alt="历史图纸缩略图"
+            onRefreshSrc={onRefreshThumbnail}
+            containerClassName="h-full w-full border-none shadow-none bg-transparent"
+          />
+        </div>
 
-        <div className="flex min-w-0 flex-1 flex-col justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-600">
-              <span>完成进度</span>
-              <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
+        <div className="mt-3 flex flex-col gap-2 px-1">
+          <div>
+            <h3 className="truncate text-sm font-bold text-slate-800">
+              {workspace.name}
+            </h3>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+              <span>{workspace.progress.beanPercentage.toFixed(0)}%</span>
             </div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-cream-100">
+            <div className="h-1 overflow-hidden rounded-full bg-cream-100">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-green-500"
+                className="h-full rounded-full bg-accent-deep"
                 style={{ width: `${workspace.progress.beanPercentage}%` }}
               />
             </div>
-            <p className="text-xs text-slate-500">
-              {workspace.progress.completedBeans} / {workspace.progress.totalBeans}
-            </p>
           </div>
 
           <Button
             type="button"
+            variant="ghost"
             size="sm"
-            className="w-full"
-            onClick={onOpen}
+            className="mt-1 w-full text-[11px] h-7 bg-cream-50/50 hover:bg-cream-100/50 text-slate-600"
             disabled={loading}
           >
             打开图纸
           </Button>
         </div>
       </div>
-    </Card>
+    </motion.div>
   );
 }
-
 export default function BeadToolPage() {
   const router = useRouter();
   const [overview, setOverview] = useState<BeadWorkspaceOverview | null>(null);
