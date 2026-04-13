@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   CalendarDays,
   Clock3,
   Link2,
@@ -544,44 +545,44 @@ export function TravelArchivesPage() {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-[2.4rem] border border-[#ead7c4] bg-[linear-gradient(145deg,#17252f_0%,#243948_44%,#56706d_100%)] px-5 py-5 text-white shadow-[0_30px_90px_rgba(19,25,32,0.22)] sm:px-6"
+          className="relative overflow-hidden rounded-[2.5rem] border-4 border-white bg-gradient-to-br from-rose-300 via-orange-200 to-amber-200 px-5 py-6 text-slate-800 shadow-cute sm:px-8"
         >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.2),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(246,214,171,0.24),transparent_26%)]" />
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10" />
 
-          <div className="relative space-y-5">
+          <div className="relative space-y-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.32em] text-white/50">
+                <p className="text-[11px] font-black uppercase tracking-[0.32em] text-rose-600/70">
                   Travel Archive
                 </p>
-                <h1 className="mt-2 text-[2.3rem] font-black tracking-[-0.06em] text-white sm:text-[2.9rem]">
+                <h1 className="mt-2 text-[2.3rem] font-black tracking-tight text-slate-800 sm:text-[2.9rem]">
                   旅行档案
                 </h1>
               </div>
 
               <Button
                 type="button"
-                className="rounded-full bg-white text-slate-900 hover:bg-[#f5efe4]"
+                className="rounded-full bg-white text-rose-500 font-bold shadow-sm hover:scale-105 transition-transform"
                 onClick={openCreateSheet}
                 disabled={!canOpenCreateArchive}
               >
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="mr-2 h-5 w-5" />
                 {loading ? "加载中" : creating ? "创建中" : "新建"}
               </Button>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-                <p className="text-xs text-white/60">总档案</p>
-                <p className="mt-2 text-2xl font-bold text-white">{stats.total}</p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-[1.5rem] border-2 border-white/40 bg-white/30 px-5 py-4 backdrop-blur-md">
+                <p className="text-xs font-bold text-rose-700/60 uppercase">总档案</p>
+                <p className="mt-2 text-3xl font-black text-slate-800">{stats.total}</p>
               </div>
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-                <p className="text-xs text-white/60">已生成</p>
-                <p className="mt-2 text-2xl font-bold text-white">{stats.generated}</p>
+              <div className="rounded-[1.5rem] border-2 border-white/40 bg-white/30 px-5 py-4 backdrop-blur-md">
+                <p className="text-xs font-bold text-rose-700/60 uppercase">已生成</p>
+                <p className="mt-2 text-3xl font-black text-slate-800">{stats.generated}</p>
               </div>
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-                <p className="text-xs text-white/60">待继续</p>
-                <p className="mt-2 text-2xl font-bold text-white">{stats.pending}</p>
+              <div className="rounded-[1.5rem] border-2 border-white/40 bg-white/30 px-5 py-4 backdrop-blur-md">
+                <p className="text-xs font-bold text-rose-700/60 uppercase">待继续</p>
+                <p className="mt-2 text-3xl font-black text-slate-800">{stats.pending}</p>
               </div>
             </div>
           </div>
@@ -623,7 +624,7 @@ export function TravelArchivesPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-5">
             {plans.map((plan, index) => {
               const itemCount = plan.itinerary.days.reduce(
                 (count, day) => count + day.items.length,
@@ -637,82 +638,99 @@ export function TravelArchivesPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}
                 >
-                  <div className="relative overflow-hidden rounded-[2rem] border border-[#eadfce] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,241,232,0.98))] shadow-[0_18px_56px_rgba(79,54,27,0.06)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(79,54,27,0.09)]">
-                    <button
-                      type="button"
-                      className="absolute right-3.5 top-3.5 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-[rgba(255,251,247,0.92)] text-slate-500 shadow-[0_10px_28px_rgba(79,54,27,0.12)] backdrop-blur transition hover:border-rose-200 hover:bg-white hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => openDeleteSheet(plan)}
-                      disabled={!!deletingId}
-                      aria-label={`删除 ${getDisplayDestination(plan.destination)}`}
-                    >
-                      {deletingId === plan.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
-
-                    <Link href={`/tools/travel/${plan.id}`} className="block px-5 py-5">
+                  {/* 车票存根视效 */}
+                  <div className="relative flex flex-col md:flex-row overflow-hidden rounded-[2rem] border-4 border-white bg-cream-50 shadow-cute transition-transform duration-300 hover:-translate-y-1 hover:shadow-cute-hover">
+                    {/* 左侧内容区 */}
+                    <div className="relative flex-1 p-6 z-10">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={clsx(
-                                "rounded-full px-3 py-1 text-[11px] font-medium",
-                                getPlanStatusTone(plan.planStatus)
+                                "rounded-full px-3 py-1 text-[11px] font-black tracking-wide",
+                                plan.planStatus === "generated" ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"
                               )}
                             >
                               {getPlanStatusLabel(plan.planStatus)}
                             </span>
-                            <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[11px] text-slate-600">
+                            <span className="rounded-full bg-slate-200/50 px-3 py-1 text-[11px] font-black tracking-wide text-slate-600">
                               {getBudgetLabel(plan.budget)}
                             </span>
                           </div>
 
-                          <h2 className="mt-4 text-[2rem] font-black tracking-[-0.05em] text-slate-900">
-                            {getDisplayDestination(plan.destination)}
-                          </h2>
+                          <Link href={`/tools/travel/${plan.id}`}>
+                            <h2 className="mt-4 text-[1.8rem] font-black tracking-tight text-slate-800 hover:text-accent-brown transition-colors">
+                              {getDisplayDestination(plan.destination)}
+                            </h2>
+                          </Link>
                         </div>
-
-                        <p className="pr-12 text-xs text-slate-400 sm:pr-14">
-                          {formatRelativeTime(plan.updatedAt)}
-                        </p>
                       </div>
 
-                      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-[1.4rem] bg-white/80 px-4 py-3">
-                          <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                            <CalendarDays className="h-3.5 w-3.5" />
-                            日期
+                      <div className="mt-6 flex flex-wrap gap-4 md:gap-8">
+                        <div>
+                          <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            <CalendarDays className="h-3.5 w-3.5" /> Date
                           </div>
-                          <p className="mt-3 text-sm font-medium text-slate-700">
+                          <p className="mt-1 text-sm font-bold text-slate-700">
                             {plan.startDate} - {plan.endDate}
                           </p>
                         </div>
 
-                        <div className="rounded-[1.4rem] bg-white/80 px-4 py-3">
-                          <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                            <Clock3 className="h-3.5 w-3.5" />
-                            节奏
+                        <div>
+                          <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            <Clock3 className="h-3.5 w-3.5" /> Rhythm
                           </div>
-                          <p className="mt-3 text-sm font-medium text-slate-700">
+                          <p className="mt-1 text-sm font-bold text-slate-700">
                             {itemCount > 0
                               ? `${itemCount} 个节点`
-                              : `${getTravelDayCount(plan.startDate, plan.endDate)} 天待安排`}
+                              : `${getTravelDayCount(plan.startDate, plan.endDate)} 天`}
                           </p>
                         </div>
 
-                        <div className="rounded-[1.4rem] bg-white/80 px-4 py-3">
-                          <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                            <Link2 className="h-3.5 w-3.5" />
-                            来源
+                        <div>
+                          <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            <Link2 className="h-3.5 w-3.5" /> Source
                           </div>
-                          <p className="mt-3 text-sm font-medium text-slate-700">
+                          <p className="mt-1 text-sm font-bold text-slate-700">
                             {plan.sourceLinks.length} 条攻略
                           </p>
                         </div>
                       </div>
-                    </Link>
+                    </div>
+
+                    {/* 车票撕开线 (桌面端垂直，移动端水平) */}
+                    <div className="relative flex md:w-8 md:flex-col items-center justify-center">
+                      <div className="absolute inset-x-0 top-0 h-4 md:inset-y-0 md:left-0 md:h-full md:w-4 -translate-y-1/2 md:-translate-x-1/2 md:translate-y-0 text-white flex md:flex-col justify-around overflow-hidden">
+                         {[...Array(12)].map((_, i) => <div key={i} className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-slate-50 shadow-inner" />)}
+                      </div>
+                      <div className="h-px w-full md:h-full md:w-px border-b-2 md:border-b-0 md:border-l-2 border-dashed border-slate-300/50" />
+                    </div>
+
+                    {/* 车票右侧存根区 */}
+                    <div className="relative bg-slate-100/50 p-6 flex md:w-48 flex-row md:flex-col items-center justify-between md:justify-center gap-4">
+                        <div className="text-center w-full">
+                           <div className="w-full mx-auto h-12 bg-[repeating-linear-gradient(90deg,#94a3b8,#94a3b8_2px,transparent_2px,transparent_4px)] opacity-30 mix-blend-multiply" />
+                           <p className="mt-2 text-[10px] font-bold text-slate-400 font-mono tracking-widest uppercase truncate">{plan.id.split('-')[0]}</p>
+                        </div>
+                        
+                        <div className="flex flex-col gap-2 w-full">
+                          <Link href={`/tools/travel/${plan.id}`} className="w-full">
+                            <Button className="w-full rounded-xl bg-slate-800 font-bold hover:bg-slate-700 h-9">
+                              启程 <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                            </Button>
+                          </Link>
+                          
+                          <Button 
+                             onClick={() => openDeleteSheet(plan)}
+                             variant="ghost" 
+                             className="w-full rounded-xl h-8 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 font-bold"
+                             disabled={!!deletingId}
+                          >
+                             {deletingId === plan.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 mr-1" />}
+                             检票作废
+                          </Button>
+                        </div>
+                    </div>
                   </div>
                 </motion.div>
               );
