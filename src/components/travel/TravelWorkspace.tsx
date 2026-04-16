@@ -16,6 +16,10 @@ import {
   Compass,
   Link2,
   Loader2,
+  Bus,
+  Banknote,
+  Info,
+  MapPin,
   MapPinned,
   Pencil,
   Plus,
@@ -133,27 +137,27 @@ const travelGenerationSlides: LoadingStorySlide[] = [
 const DAY_SURFACES = [
   {
     shell:
-      "border-[#e9dccd] bg-[linear-gradient(180deg,rgba(255,252,246,0.98),rgba(243,232,218,0.98))]",
-    badge: "bg-[#1f4254] text-white",
-    line: "from-[#1f4254] via-[#b78960] to-transparent",
-    dot: "border-[#f7efe2] bg-[#1f4254]",
-    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.58),transparent_60%)]",
+      "border-[4px] border-white bg-[#fcf8f2] shadow-cute",
+    badge: "bg-rose-100 text-rose-700",
+    line: "from-rose-200 via-orange-100 to-transparent",
+    dot: "border-white bg-rose-300",
+    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.8),transparent_60%)]",
   },
   {
     shell:
-      "border-[#dfe4df] bg-[linear-gradient(180deg,rgba(248,250,247,0.98),rgba(229,237,232,0.98))]",
-    badge: "bg-[#3d5c54] text-white",
-    line: "from-[#3d5c54] via-[#9bb0a6] to-transparent",
-    dot: "border-[#f4f7f4] bg-[#3d5c54]",
-    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.62),transparent_62%)]",
+      "border-[4px] border-white bg-[#f2f8f5] shadow-cute",
+    badge: "bg-emerald-100 text-emerald-700",
+    line: "from-emerald-200 via-teal-100 to-transparent",
+    dot: "border-white bg-emerald-300",
+    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.82),transparent_62%)]",
   },
   {
     shell:
-      "border-[#eadfd9] bg-[linear-gradient(180deg,rgba(255,250,248,0.98),rgba(244,228,221,0.98))]",
-    badge: "bg-[#7d4d47] text-white",
-    line: "from-[#7d4d47] via-[#d5a798] to-transparent",
-    dot: "border-[#f9f1ee] bg-[#7d4d47]",
-    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.58),transparent_62%)]",
+      "border-[4px] border-white bg-[#f9f1f0] shadow-cute",
+    badge: "bg-sky-100 text-sky-700",
+    line: "from-sky-200 via-blue-100 to-transparent",
+    dot: "border-white bg-sky-300",
+    glaze: "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.8),transparent_62%)]",
   },
 ];
 
@@ -162,33 +166,33 @@ const TIMELINE_CARD_META = {
     label: "美食",
     icon: UtensilsCrossed,
     shell:
-      "border-[#f0d6c4] bg-[linear-gradient(180deg,rgba(255,249,245,0.98),rgba(255,239,230,0.98))]",
-    chip: "bg-[#8c4f34] text-white",
-    glow: "bg-[radial-gradient(circle_at_top_right,rgba(230,164,124,0.18),transparent_52%)]",
+      "border-[4px] border-white bg-orange-50/90 backdrop-blur-md shadow-sm",
+    chip: "bg-orange-100 text-orange-700",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(251,146,60,0.18),transparent_52%)]",
   },
   sightseeing: {
     label: "景点",
     icon: MapPinned,
     shell:
-      "border-[#d3e2e6] bg-[linear-gradient(180deg,rgba(247,251,252,0.98),rgba(232,244,247,0.98))]",
-    chip: "bg-[#2d5d6f] text-white",
-    glow: "bg-[radial-gradient(circle_at_top_right,rgba(117,173,191,0.18),transparent_52%)]",
+      "border-[4px] border-white bg-sky-50/90 backdrop-blur-md shadow-sm",
+    chip: "bg-sky-100 text-sky-700",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_52%)]",
   },
   activity: {
     label: "活动",
     icon: Compass,
     shell:
-      "border-[#e2dfcf] bg-[linear-gradient(180deg,rgba(255,253,246,0.98),rgba(247,242,225,0.98))]",
-    chip: "bg-[#6e6040] text-white",
-    glow: "bg-[radial-gradient(circle_at_top_right,rgba(204,190,124,0.16),transparent_52%)]",
+      "border-[4px] border-white bg-emerald-50/90 backdrop-blur-md shadow-sm",
+    chip: "bg-emerald-100 text-emerald-700",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.16),transparent_52%)]",
   },
   rest: {
     label: "休息",
     icon: Coffee,
     shell:
-      "border-[#dccfbf] bg-[linear-gradient(180deg,rgba(255,251,247,0.98),rgba(244,235,224,0.98))]",
-    chip: "bg-[#86624b] text-white",
-    glow: "bg-[radial-gradient(circle_at_top_right,rgba(193,155,121,0.18),transparent_52%)]",
+      "border-[4px] border-white bg-rose-50/90 backdrop-blur-md shadow-sm",
+    chip: "bg-rose-100 text-rose-700",
+    glow: "bg-[radial-gradient(circle_at_top_right,rgba(251,113,133,0.18),transparent_52%)]",
   },
 } satisfies Record<
   VisibleTimelineKind,
@@ -712,98 +716,98 @@ function TimePickerField({
 
       <FloatingPickerPortal>
         <AnimatePresence>
-        {open ? (
-          <>
-            <motion.button
-              type="button"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="fixed inset-0 z-[80] bg-slate-950/28 backdrop-blur-[2px]"
-              onClick={() => setOpen(false)}
-              aria-label="关闭时间选择器"
-            />
+          {open ? (
+            <>
+              <motion.button
+                type="button"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="fixed inset-0 z-[80] bg-slate-950/28 backdrop-blur-[2px]"
+                onClick={() => setOpen(false)}
+                aria-label="关闭时间选择器"
+              />
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 20 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-            >
-              <div className="w-full max-w-[360px] rounded-[2rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf9_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(33,24,18,0.16)]">
-              <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-5">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                >
-                  取消
-                </button>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 20 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+              >
+                <div className="w-full max-w-[360px] rounded-[2rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf9_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(33,24,18,0.16)]">
+                  <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-5">
+                    <button
+                      type="button"
+                      onClick={() => setOpen(false)}
+                      className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                    >
+                      取消
+                    </button>
 
-                <div className="min-w-0 text-center">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Time
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-800">
-                    {isEndField ? "结束时间" : "开始时间"}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDraftHour("");
-                      setDraftMinute("");
-                    }}
-                    className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                  >
-                    清空
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange(buildTimeValue(draftHour, draftMinute));
-                      setOpen(false);
-                    }}
-                    className="text-sm font-semibold text-slate-900 transition hover:text-slate-700"
-                  >
-                    完成
-                  </button>
-                </div>
-              </div>
-
-              <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-                <div className="rounded-[2rem] border border-[#eadfce] bg-white/72 p-4 shadow-[0_14px_40px_rgba(79,54,27,0.08)]">
-                  <div className="text-center font-mono text-[2rem] font-semibold tabular-nums tracking-[0.02em] text-slate-900">
-                    {draftHour || "--"}:{draftMinute || "--"}
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-center gap-2">
-                    <TimeWheelColumn
-                      options={TIME_HOUR_OPTIONS}
-                      value={draftHour}
-                      onChange={setDraftHour}
-                      ariaLabel="小时"
-                    />
-                    <div className="text-center font-mono text-[1.75rem] font-semibold text-slate-300">
-                      :
+                    <div className="min-w-0 text-center">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                        Time
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {isEndField ? "结束时间" : "开始时间"}
+                      </p>
                     </div>
-                    <TimeWheelColumn
-                      options={TIME_MINUTE_OPTIONS}
-                      value={draftMinute}
-                      onChange={setDraftMinute}
-                      ariaLabel="分钟"
-                    />
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDraftHour("");
+                          setDraftMinute("");
+                        }}
+                        className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                      >
+                        清空
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange(buildTimeValue(draftHour, draftMinute));
+                          setOpen(false);
+                        }}
+                        className="text-sm font-semibold text-slate-900 transition hover:text-slate-700"
+                      >
+                        完成
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                    <div className="rounded-[2rem] border border-[#eadfce] bg-white/72 p-4 shadow-[0_14px_40px_rgba(79,54,27,0.08)]">
+                      <div className="text-center font-mono text-[2rem] font-semibold tabular-nums tracking-[0.02em] text-slate-900">
+                        {draftHour || "--"}:{draftMinute || "--"}
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-center gap-2">
+                        <TimeWheelColumn
+                          options={TIME_HOUR_OPTIONS}
+                          value={draftHour}
+                          onChange={setDraftHour}
+                          ariaLabel="小时"
+                        />
+                        <div className="text-center font-mono text-[1.75rem] font-semibold text-slate-300">
+                          :
+                        </div>
+                        <TimeWheelColumn
+                          options={TIME_MINUTE_OPTIONS}
+                          value={draftMinute}
+                          onChange={setDraftMinute}
+                          ariaLabel="分钟"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-              </div>
-            </motion.div>
-          </>
-        ) : null}
+              </motion.div>
+            </>
+          ) : null}
         </AnimatePresence>
       </FloatingPickerPortal>
     </>
@@ -852,124 +856,124 @@ function DatePickerField({
 
       <FloatingPickerPortal>
         <AnimatePresence>
-        {open ? (
-          <>
-            <motion.button
-              type="button"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="fixed inset-0 z-[80] bg-slate-950/28 backdrop-blur-[2px]"
-              onClick={() => setOpen(false)}
-              aria-label="关闭日期选择器"
-            />
+          {open ? (
+            <>
+              <motion.button
+                type="button"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="fixed inset-0 z-[80] bg-slate-950/28 backdrop-blur-[2px]"
+                onClick={() => setOpen(false)}
+                aria-label="关闭日期选择器"
+              />
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 20 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-            >
-              <div className="w-full max-w-[368px] rounded-[2rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf9_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(33,24,18,0.16)]">
-                <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-5">
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                  >
-                    取消
-                  </button>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 20 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+              >
+                <div className="w-full max-w-[368px] rounded-[2rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf9_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(33,24,18,0.16)]">
+                  <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-5">
+                    <button
+                      type="button"
+                      onClick={() => setOpen(false)}
+                      className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                    >
+                      取消
+                    </button>
 
-                  <div className="min-w-0 text-center">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      Date
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-800">
-                      {label}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const todayValue = formatLocalDateValue(new Date());
-                      onChange(todayValue);
-                      setOpen(false);
-                    }}
-                    className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
-                  >
-                    今天
-                  </button>
-                </div>
-
-                <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-                  <div className="rounded-[2rem] border border-[#eadfce] bg-white/72 p-4 shadow-[0_14px_40px_rgba(79,54,27,0.08)]">
-                    <div className="text-center text-lg font-semibold text-slate-900">
-                      {formatSelectedDateTitle(value)}
+                    <div className="min-w-0 text-center">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                        Date
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {label}
+                      </p>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setVisibleMonth((current) => shiftCalendarMonth(current, -1))}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#eadfce] bg-white text-slate-700 transition hover:border-slate-300"
-                        aria-label="上个月"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </button>
-                      <div className="text-sm font-semibold text-slate-800">
-                        {formatCalendarMonthLabel(visibleMonth)}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const todayValue = formatLocalDateValue(new Date());
+                        onChange(todayValue);
+                        setOpen(false);
+                      }}
+                      className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                    >
+                      今天
+                    </button>
+                  </div>
+
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                    <div className="rounded-[2rem] border border-[#eadfce] bg-white/72 p-4 shadow-[0_14px_40px_rgba(79,54,27,0.08)]">
+                      <div className="text-center text-lg font-semibold text-slate-900">
+                        {formatSelectedDateTitle(value)}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setVisibleMonth((current) => shiftCalendarMonth(current, 1))}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#eadfce] bg-white text-slate-700 transition hover:border-slate-300"
-                        aria-label="下个月"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
 
-                    <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-slate-400">
-                      {["日", "一", "二", "三", "四", "五", "六"].map((weekDay) => (
-                        <div key={weekDay}>{weekDay}</div>
-                      ))}
-                    </div>
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setVisibleMonth((current) => shiftCalendarMonth(current, -1))}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#eadfce] bg-white text-slate-700 transition hover:border-slate-300"
+                          aria-label="上个月"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <div className="text-sm font-semibold text-slate-800">
+                          {formatCalendarMonthLabel(visibleMonth)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setVisibleMonth((current) => shiftCalendarMonth(current, 1))}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#eadfce] bg-white text-slate-700 transition hover:border-slate-300"
+                          aria-label="下个月"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
 
-                    <div className="mt-2 grid grid-cols-7 gap-1">
-                      {calendarDays.map((day) => {
-                        const isSelected = day.value === selectedValue;
+                      <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-slate-400">
+                        {["日", "一", "二", "三", "四", "五", "六"].map((weekDay) => (
+                          <div key={weekDay}>{weekDay}</div>
+                        ))}
+                      </div>
 
-                        return (
-                          <button
-                            key={day.value}
-                            type="button"
-                            onClick={() => {
-                              onChange(day.value);
-                              setOpen(false);
-                            }}
-                            className={clsx(
-                              "flex h-10 items-center justify-center rounded-[0.95rem] text-sm font-medium transition",
-                              isSelected
-                                ? "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)]"
-                                : day.isCurrentMonth
-                                  ? "text-slate-700 hover:bg-slate-100"
-                                  : "text-slate-300 hover:bg-slate-100/70"
-                            )}
-                          >
-                            {day.day}
-                          </button>
-                        );
-                      })}
+                      <div className="mt-2 grid grid-cols-7 gap-1">
+                        {calendarDays.map((day) => {
+                          const isSelected = day.value === selectedValue;
+
+                          return (
+                            <button
+                              key={day.value}
+                              type="button"
+                              onClick={() => {
+                                onChange(day.value);
+                                setOpen(false);
+                              }}
+                              className={clsx(
+                                "flex h-10 items-center justify-center rounded-[0.95rem] text-sm font-medium transition",
+                                isSelected
+                                  ? "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)]"
+                                  : day.isCurrentMonth
+                                    ? "text-slate-700 hover:bg-slate-100"
+                                    : "text-slate-300 hover:bg-slate-100/70"
+                              )}
+                            >
+                              {day.day}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </motion.div>
-          </>
-        ) : null}
+              </motion.div>
+            </>
+          ) : null}
         </AnimatePresence>
       </FloatingPickerPortal>
     </div>
@@ -1384,9 +1388,9 @@ export function TravelWorkspace({ travelPlanId }: Props) {
       days: current.days.map((day, index) =>
         index === dayIndex
           ? {
-              ...day,
-              items: [nextItem, ...day.items],
-            }
+            ...day,
+            items: [nextItem, ...day.items],
+          }
           : day
       ),
     }));
@@ -1400,9 +1404,9 @@ export function TravelWorkspace({ travelPlanId }: Props) {
       days: current.days.map((day, index) =>
         index === dayIndex
           ? {
-              ...day,
-              items: day.items.filter((item) => item.id !== itemId),
-            }
+            ...day,
+            items: day.items.filter((item) => item.id !== itemId),
+          }
           : day
       ),
     }));
@@ -1422,27 +1426,27 @@ export function TravelWorkspace({ travelPlanId }: Props) {
       days: current.days.map((day, index) =>
         index === dayIndex
           ? (() => {
-              const nextItems = day.items.map((item) =>
-                item.id === itemId
-                  ? {
-                      ...item,
-                      [field]: value,
-                    }
-                  : item
-              );
-              const shouldSort =
-                field !== "startTime" &&
+            const nextItems = day.items.map((item) =>
+              item.id === itemId
+                ? {
+                  ...item,
+                  [field]: value,
+                }
+                : item
+            );
+            const shouldSort =
+              field !== "startTime" &&
                 field !== "endTime"
-                  ? true
-                  : typeof value !== "string" ||
-                    value === "" ||
-                    isCompleteTravelTime(value);
+                ? true
+                : typeof value !== "string" ||
+                value === "" ||
+                isCompleteTravelTime(value);
 
-              return {
-                ...day,
-                items: shouldSort ? sortTravelItineraryItems(nextItems) : nextItems,
-              };
-            })()
+            return {
+              ...day,
+              items: shouldSort ? sortTravelItineraryItems(nextItems) : nextItems,
+            };
+          })()
           : day
       ),
     }));
@@ -1466,9 +1470,9 @@ export function TravelWorkspace({ travelPlanId }: Props) {
       sourceLinks: current.sourceLinks.map((source) =>
         source.id === sourceId
           ? {
-              ...source,
-              manualSummary: value,
-            }
+            ...source,
+            manualSummary: value,
+          }
           : source
       ),
     }));
@@ -1590,7 +1594,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
       setGenerationProgress(100);
       setError(
         recoveredPlan?.generationError ||
-          (generateError instanceof Error ? generateError.message : "生成行程失败。")
+        (generateError instanceof Error ? generateError.message : "生成行程失败。")
       );
       await delay(520);
     } finally {
@@ -1693,16 +1697,16 @@ export function TravelWorkspace({ travelPlanId }: Props) {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-[2.3rem] border border-[#ead7c4] bg-[linear-gradient(145deg,#17252f_0%,#243948_42%,#56706d_100%)] px-5 py-5 text-white shadow-[0_30px_90px_rgba(19,25,32,0.22)] sm:px-6"
+          className="relative overflow-hidden rounded-[2.5rem] border-4 border-white bg-gradient-to-br from-rose-300 via-orange-200 to-amber-200 px-5 py-6 text-slate-800 shadow-cute sm:px-8"
         >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(246,214,171,0.22),transparent_28%)]" />
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10" />
 
           <div className="relative space-y-5">
             <div className="flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={handleBack}
-                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white/88 transition hover:bg-white/16"
+                className="inline-flex items-center gap-2 rounded-full border-2 border-white/40 bg-white/30 px-3 py-1.5 text-sm text-rose-600 font-bold transition hover:bg-white/50 backdrop-blur-sm"
               >
                 <ChevronLeft className="h-4 w-4" />
                 返回
@@ -1719,41 +1723,41 @@ export function TravelWorkspace({ travelPlanId }: Props) {
             </div>
 
             <div className="space-y-3">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-white/50">
+              <p className="text-[11px] font-black uppercase tracking-[0.32em] text-rose-600/70">
                 Trip Workspace
               </p>
-              <h1 className="text-[2.6rem] font-black tracking-[-0.06em] text-white sm:text-[3.4rem]">
+              <h1 className="text-[2.6rem] font-black tracking-[-0.06em] text-slate-800 sm:text-[3.4rem]">
                 {displayDestination}
               </h1>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-                <div className="inline-flex items-center gap-2 text-xs text-white/64">
+              <div className="rounded-[1.5rem] border-2 border-white/40 bg-white/30 px-4 py-3 backdrop-blur-md">
+                <div className="inline-flex items-center gap-2 text-xs font-bold text-rose-700/60 uppercase">
                   <CalendarDays className="h-3.5 w-3.5" />
                   日期
                 </div>
-                <p className="mt-2 text-sm font-semibold text-white">
+                <p className="mt-2 text-sm font-black text-slate-800">
                   {formatDateChip(plan.startDate)} - {formatDateChip(plan.endDate)}
                 </p>
               </div>
 
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-                <div className="inline-flex items-center gap-2 text-xs text-white/64">
+              <div className="rounded-[1.5rem] border-2 border-white/40 bg-white/30 px-4 py-3 backdrop-blur-md">
+                <div className="inline-flex items-center gap-2 text-xs font-bold text-rose-700/60 uppercase">
                   <Clock3 className="h-3.5 w-3.5" />
                   计划
                 </div>
-                <p className="mt-2 text-sm font-semibold text-white">
+                <p className="mt-2 text-sm font-black text-slate-800">
                   {visibleTimeline ? `${totalItems} 个节点` : `${dayCount} 天待排`}
                 </p>
               </div>
 
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-                <div className="inline-flex items-center gap-2 text-xs text-white/64">
+              <div className="rounded-[1.5rem] border-2 border-white/40 bg-white/30 px-4 py-3 backdrop-blur-md">
+                <div className="inline-flex items-center gap-2 text-xs font-bold text-rose-700/60 uppercase">
                   <Link2 className="h-3.5 w-3.5" />
                   攻略
                 </div>
-                <p className="mt-2 text-sm font-semibold text-white">
+                <p className="mt-2 text-sm font-black text-slate-800">
                   {plan.sourceLinks.length} 条来源
                 </p>
               </div>
@@ -1775,7 +1779,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
 
         <section className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="order-1 space-y-4 xl:sticky xl:top-24 xl:self-start">
-            <div className="overflow-visible rounded-[2.1rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf8_0%,#f4ece1_100%)] shadow-[0_20px_60px_rgba(79,54,27,0.07)]">
+            <div className="overflow-visible rounded-[2.3rem] border-4 border-white bg-[#fffdf8] shadow-cute">
               <div className="border-b border-[#eadfce] px-5 py-4">
                 <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
                   Setup
@@ -1797,7 +1801,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                       }))
                     }
                     placeholder="例如：东京 / 上海 / 香港"
-                    className="w-full rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                    className="w-full rounded-[1.35rem] border-2 border-white/80 bg-[rgba(255,255,255,0.6)] px-4 py-3 text-sm text-slate-700 shadow-[0_4px_20px_rgba(0,0,0,0.03)] outline-none transition focus:border-rose-300 backdrop-blur"
                   />
                 </div>
 
@@ -1836,10 +1840,10 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                         type="button"
                         onClick={() => updateBudget(option.value)}
                         className={clsx(
-                          "rounded-[1.35rem] border px-4 py-3 text-left transition",
+                          "rounded-[1.35rem] border-2 px-4 py-3 text-left transition",
                           plan.budget === option.value
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-[#eadfce] bg-white text-slate-700 hover:border-slate-400"
+                            ? "border-rose-400 bg-rose-400 text-white shadow-[0_10px_24px_rgba(251,113,133,0.3)]"
+                            : "border-white bg-[#fcf8f2] text-slate-700 shadow-sm hover:border-rose-200"
                         )}
                       >
                         <p className="text-sm font-semibold">{option.label}</p>
@@ -1870,10 +1874,10 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                           type="button"
                           onClick={() => togglePreference(item.key)}
                           className={clsx(
-                            "rounded-full border px-3 py-1.5 text-sm transition",
+                            "rounded-full border-2 px-3 py-1.5 text-sm font-bold transition",
                             active
-                              ? "border-slate-900 bg-slate-900 text-white"
-                              : "border-[#eadfce] bg-white text-slate-600 hover:border-slate-400"
+                              ? "border-amber-400 bg-amber-400 text-stone-900 shadow-[0_8px_20px_rgba(251,191,36,0.3)]"
+                              : "border-white bg-[#fcf8f2] text-slate-600 shadow-sm hover:border-amber-200"
                           )}
                         >
                           {item.label}
@@ -1895,13 +1899,13 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                     }
                     rows={4}
                     placeholder="同行人、作息、必须去 / 不想去的点"
-                    className="w-full resize-none rounded-[1.35rem] border border-[#eadfce] bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-slate-400"
+                    className="w-full resize-none rounded-[1.35rem] border-2 border-white/80 bg-[rgba(255,255,255,0.6)] px-4 py-3 text-sm leading-6 text-slate-700 shadow-[0_4px_20px_rgba(0,0,0,0.03)] outline-none transition focus:border-rose-300 backdrop-blur"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-[2.1rem] border border-[#eadfce] bg-white shadow-[0_20px_60px_rgba(79,54,27,0.06)]">
+            <div className="overflow-hidden rounded-[2.3rem] border-4 border-white bg-white shadow-cute">
               <div className="border-b border-[#f0e7da] px-5 py-4">
                 <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
                   Sources
@@ -1960,7 +1964,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-[2.1rem] border border-[#1f2f38] bg-[linear-gradient(180deg,#202d36_0%,#1a232a_100%)] text-white shadow-[0_22px_70px_rgba(16,24,32,0.18)]">
+            <div className="overflow-hidden rounded-[2.3rem] border-4 border-white bg-gradient-to-br from-slate-800 to-slate-900 text-white shadow-cute">
               <div className="px-5 py-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -2003,7 +2007,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
 
                   <Button
                     type="button"
-                    className="w-full rounded-full"
+                    className="w-full rounded-full bg-rose-600 text-white hover:bg-rose-500 shadow-sm"
                     onClick={() => void handleGenerate()}
                     disabled={generating}
                   >
@@ -2016,7 +2020,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
           </aside>
 
           <div className="order-2 space-y-4">
-            <div className="rounded-[2.1rem] border border-[#eadfce] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,241,232,0.98))] px-5 py-5 shadow-[0_20px_60px_rgba(79,54,27,0.06)]">
+            <div className="rounded-[2.3rem] border-4 border-white bg-white px-5 py-5 shadow-cute">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">
@@ -2045,7 +2049,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
             </div>
 
             {!visibleTimeline ? (
-              <div className="overflow-hidden rounded-[2.3rem] border border-[#eadfce] bg-[linear-gradient(180deg,#fffdf8_0%,#f3ebe0_100%)] shadow-[0_24px_70px_rgba(79,54,27,0.07)]">
+              <div className="overflow-hidden rounded-[2.5rem] border-4 border-white bg-[#fffdf8] shadow-cute">
                 <div className="relative px-6 py-8">
                   <div className="absolute right-[-28px] top-[-40px] h-36 w-36 rounded-full bg-[rgba(28,56,68,0.08)] blur-2xl" />
 
@@ -2098,7 +2102,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: dayIndex * 0.05 }}
                       className={clsx(
-                        "relative overflow-hidden rounded-[2.3rem] border shadow-[0_22px_70px_rgba(79,54,27,0.06)]",
+                        "relative overflow-hidden rounded-[2.5rem]",
                         skin.shell
                       )}
                     >
@@ -2128,9 +2132,9 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                                     days: current.days.map((item, index) =>
                                       index === dayIndex
                                         ? {
-                                            ...item,
-                                            theme: event.target.value,
-                                          }
+                                          ...item,
+                                          theme: event.target.value,
+                                        }
                                         : item
                                     ),
                                   }))
@@ -2197,10 +2201,11 @@ export function TravelWorkspace({ travelPlanId }: Props) {
 
                                   <div
                                     className={clsx(
-                                      "relative overflow-hidden rounded-[1.85rem] border px-3.5 py-3 shadow-[0_14px_34px_rgba(79,54,27,0.05)] backdrop-blur transition sm:rounded-[2.05rem] sm:px-4 sm:py-3.5",
+                                      "relative overflow-hidden rounded-[1.85rem] px-3.5 py-3 shadow-[0_14px_34px_rgba(79,54,27,0.05)] backdrop-blur transition-all duration-300 sm:rounded-[2.05rem] sm:px-4 sm:py-3.5",
                                       cardMeta.shell,
+                                      !isEditing && "hover:-translate-y-1 hover:shadow-cute-hover",
                                       isEditing &&
-                                        "border-slate-900 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(250,243,233,0.98))] shadow-[0_28px_70px_rgba(48,35,20,0.18)] ring-2 ring-slate-900/10"
+                                      "border-[4px] border-slate-900 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(250,243,233,0.98))] shadow-[0_28px_70px_rgba(48,35,20,0.18)] scale-[1.02]"
                                     )}
                                   >
                                     <div
@@ -2288,126 +2293,156 @@ export function TravelWorkspace({ travelPlanId }: Props) {
                                         </div>
                                       </div>
 
-                                      <div
-                                        className={clsx(
-                                          "grid grid-cols-[42px_minmax(0,1fr)] items-start gap-2 rounded-[1.1rem] border px-3 py-2 transition sm:grid-cols-[58px_minmax(0,1fr)] sm:gap-2.5 sm:rounded-[1.2rem] sm:py-2.5",
-                                          isEditing
-                                            ? "border-[#dcc6b2] bg-white shadow-[0_12px_28px_rgba(79,54,27,0.08)]"
-                                            : "border-white/40 bg-white/42"
-                                        )}
-                                      >
-                                        <div className="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:pt-1.5 sm:text-[11px] sm:tracking-[0.14em]">
-                                          时间
-                                        </div>
+                                      <AnimatePresence initial={false} mode="wait">
                                         {isEditing ? (
-                                          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-                                            <TimePickerField
-                                              label="开始"
-                                              value={item.startTime}
-                                              onChange={(value) =>
-                                                updateTimelineItem(
-                                                  dayIndex,
-                                                  item.id,
-                                                  "startTime",
-                                                  value
-                                                )
-                                              }
+                                          <motion.div
+                                            key="edit"
+                                            initial={{ opacity: 0, y: -10, height: 0 }}
+                                            animate={{ opacity: 1, y: 0, height: "auto" }}
+                                            exit={{ opacity: 0, y: -10, height: 0 }}
+                                            transition={{ duration: 0.25, ease: "easeOut" }}
+                                            className="space-y-2.5 sm:space-y-3"
+                                          >
+                                            <div className="grid grid-cols-[42px_minmax(0,1fr)] items-start gap-2 rounded-[1.1rem] border border-[#dcc6b2] bg-white px-3 py-2 shadow-[0_12px_28px_rgba(79,54,27,0.08)] transition sm:grid-cols-[58px_minmax(0,1fr)] sm:gap-2.5 sm:rounded-[1.2rem] sm:py-2.5">
+                                              <div className="pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:pt-1.5 sm:text-[11px] sm:tracking-[0.14em]">
+                                                时间
+                                              </div>
+                                              <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                                                <TimePickerField
+                                                  label="开始"
+                                                  value={item.startTime}
+                                                  onChange={(v) => updateTimelineItem(dayIndex, item.id, "startTime", v)}
+                                                />
+                                                <TimePickerField
+                                                  label="结束"
+                                                  value={item.endTime}
+                                                  onChange={(v) => updateTimelineItem(dayIndex, item.id, "endTime", v)}
+                                                />
+                                              </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
+                                              <LabeledAutoField
+                                                label="地点"
+                                                value={item.placeName}
+                                                onChange={(v) => updateTimelineItem(dayIndex, item.id, "placeName", v)}
+                                                readOnly={false}
+                                                emptyHint="添加地点"
+                                              />
+                                              <LabeledAutoField
+                                                label="区域"
+                                                value={item.districtOrArea}
+                                                onChange={(v) => updateTimelineItem(dayIndex, item.id, "districtOrArea", v)}
+                                                readOnly={false}
+                                                emptyHint="补充区域"
+                                              />
+                                              <LabeledAutoField
+                                                label="交通"
+                                                value={item.transport}
+                                                onChange={(v) => updateTimelineItem(dayIndex, item.id, "transport", v)}
+                                                readOnly={false}
+                                                emptyHint="填写交通方式"
+                                              />
+                                              <LabeledAutoField
+                                                label="花费"
+                                                value={item.estimatedCost}
+                                                onChange={(v) => updateTimelineItem(dayIndex, item.id, "estimatedCost", v)}
+                                                readOnly={false}
+                                                emptyHint="补充预算"
+                                              />
+                                            </div>
+
+                                            <LabeledAutoField
+                                              label="安排"
+                                              value={item.summary}
+                                              onChange={(v) => updateTimelineItem(dayIndex, item.id, "summary", v)}
+                                              readOnly={false}
+                                              minRows={2}
+                                              emptyHint="写下这一段要做什么"
                                             />
-                                            <TimePickerField
-                                              label="结束"
-                                              value={item.endTime}
-                                              onChange={(value) =>
-                                                updateTimelineItem(
-                                                  dayIndex,
-                                                  item.id,
-                                                  "endTime",
-                                                  value
-                                                )
-                                              }
+
+                                            <LabeledAutoField
+                                              label="提醒"
+                                              value={item.tips}
+                                              onChange={(v) => updateTimelineItem(dayIndex, item.id, "tips", v)}
+                                              readOnly={false}
+                                              minRows={2}
+                                              emptyHint="预约、备选或注意事项"
                                             />
-                                          </div>
+                                          </motion.div>
                                         ) : (
-                                          <div className="min-h-[32px] py-1 text-[13px] leading-[1.55] text-slate-700 sm:min-h-[36px] sm:py-1.5 sm:text-sm sm:leading-6">
-                                            {item.startTime || item.endTime
-                                              ? `${item.startTime || "--:--"} - ${
-                                                  item.endTime || "--:--"
-                                                }`
-                                              : "添加时间"}
-                                          </div>
+                                          <motion.div
+                                            key="view"
+                                            initial={{ opacity: 0, y: -10, height: 0 }}
+                                            animate={{ opacity: 1, y: 0, height: "auto" }}
+                                            exit={{ opacity: 0, y: -10, height: 0 }}
+                                            transition={{ duration: 0.25, ease: "easeOut" }}
+                                            className="space-y-4 pt-2"
+                                          >
+                                            <div className="flex flex-col gap-3">
+                                              {(item.placeName || item.districtOrArea) && (
+                                                <div className="inline-flex items-start gap-2">
+                                                  <MapPin className="mt-1 h-5 w-5 shrink-0 text-rose-500" />
+                                                  <div className="min-w-0">
+                                                    {item.placeName && (
+                                                      <span className="text-[1.18rem] font-black tracking-[-0.03em] text-slate-800">
+                                                        {item.placeName}
+                                                      </span>
+                                                    )}
+                                                    {item.districtOrArea && (
+                                                      <span className={clsx("text-sm font-semibold text-slate-500", item.placeName && "ml-2")}>
+                                                        {item.districtOrArea}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              )}
+
+                                              <div className="min-h-[28px] whitespace-pre-wrap pl-1 text-[14px] leading-[1.65] text-slate-700">
+                                                {item.summary || (
+                                                  <span className="text-sm italic text-slate-400">
+                                                    尚未填写这段行程的具体安排…
+                                                  </span>
+                                                )}
+                                              </div>
+
+                                              {(item.transport || item.estimatedCost || item.startTime || item.endTime) && (
+                                                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-900/5 mt-1">
+                                                  {(item.startTime || item.endTime) && (
+                                                    <div className="inline-flex items-center gap-1.5 rounded-[0.85rem] bg-slate-100 px-3 py-1.5 text-[0.8rem] font-bold text-slate-700 shadow-sm border border-slate-200">
+                                                      <Clock3 className="h-3.5 w-3.5 text-slate-500" />
+                                                      {item.startTime || "--:--"} - {item.endTime || "--:--"}
+                                                    </div>
+                                                  )}
+                                                  {item.transport && (
+                                                    <div className="inline-flex items-center gap-1.5 rounded-[0.85rem] bg-sky-50 px-3 py-1.5 text-[0.8rem] font-bold text-sky-700 shadow-sm border border-sky-100">
+                                                      <Bus className="h-3.5 w-3.5 text-sky-500" />
+                                                      {item.transport}
+                                                    </div>
+                                                  )}
+                                                  {item.estimatedCost && (
+                                                    <div className="inline-flex items-center gap-1.5 rounded-[0.85rem] bg-amber-50 px-3 py-1.5 text-[0.8rem] font-bold text-amber-700 shadow-sm border border-amber-100">
+                                                      <Banknote className="h-3.5 w-3.5 text-amber-500" />
+                                                      {item.estimatedCost}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+
+                                              {item.tips && (
+                                                <div className="mt-1 rounded-[1.25rem] border border-orange-100 bg-[#fff9f2] p-3.5 shadow-sm">
+                                                  <div className="flex items-start gap-2.5">
+                                                    <Info className="mt-[2px] h-4 w-4 shrink-0 text-orange-400" />
+                                                    <p className="min-w-0 text-[13px] font-medium leading-relaxed text-orange-800/90 whitespace-pre-wrap">
+                                                      {item.tips}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </motion.div>
                                         )}
-                                      </div>
-
-                                      <LabeledAutoField
-                                        label="地点"
-                                        value={item.placeName}
-                                        onChange={(value) =>
-                                          updateTimelineItem(dayIndex, item.id, "placeName", value)
-                                        }
-                                        readOnly={!isEditing}
-                                        emptyHint="添加地点"
-                                      />
-
-                                      <LabeledAutoField
-                                        label="区域"
-                                        value={item.districtOrArea}
-                                        onChange={(value) =>
-                                          updateTimelineItem(
-                                            dayIndex,
-                                            item.id,
-                                            "districtOrArea",
-                                            value
-                                          )
-                                        }
-                                        readOnly={!isEditing}
-                                        emptyHint="补充区域"
-                                      />
-
-                                      <LabeledAutoField
-                                        label="交通"
-                                        value={item.transport}
-                                        onChange={(value) =>
-                                          updateTimelineItem(dayIndex, item.id, "transport", value)
-                                        }
-                                        readOnly={!isEditing}
-                                        emptyHint="填写交通方式"
-                                      />
-
-                                      <LabeledAutoField
-                                        label="安排"
-                                        value={item.summary}
-                                        onChange={(value) =>
-                                          updateTimelineItem(dayIndex, item.id, "summary", value)
-                                        }
-                                        readOnly={!isEditing}
-                                        minRows={2}
-                                        emptyHint="写下这一段要做什么"
-                                      />
-
-                                      <LabeledAutoField
-                                        label="花费"
-                                        value={item.estimatedCost}
-                                        onChange={(value) =>
-                                          updateTimelineItem(
-                                            dayIndex,
-                                            item.id,
-                                            "estimatedCost",
-                                            value
-                                          )
-                                        }
-                                        readOnly={!isEditing}
-                                        emptyHint="补充预算"
-                                      />
-
-                                      <LabeledAutoField
-                                        label="提醒"
-                                        value={item.tips}
-                                        onChange={(value) =>
-                                          updateTimelineItem(dayIndex, item.id, "tips", value)
-                                        }
-                                        readOnly={!isEditing}
-                                        minRows={2}
-                                        emptyHint="预约、备选或注意事项"
-                                      />
+                                      </AnimatePresence>
                                     </div>
                                   </div>
                                 </motion.div>
@@ -2426,11 +2461,11 @@ export function TravelWorkspace({ travelPlanId }: Props) {
       </div>
 
       <div className="fixed inset-x-4 bottom-4 z-30 xl:hidden">
-        <div className="grid grid-cols-2 gap-3 rounded-[1.9rem] border border-white/70 bg-white/88 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.12)] backdrop-blur">
+        <div className="grid grid-cols-2 gap-3 rounded-[2rem] border border-white/70 bg-white/88 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.12)] backdrop-blur-md">
           <Button
             type="button"
             variant="secondary"
-            className="rounded-[1.4rem]"
+            className="rounded-full bg-white text-slate-800 shadow-sm"
             onClick={() => void handleSave()}
             disabled={saving}
           >
@@ -2440,7 +2475,7 @@ export function TravelWorkspace({ travelPlanId }: Props) {
 
           <Button
             type="button"
-            className="rounded-[1.4rem]"
+            className="rounded-full bg-rose-600 text-white hover:bg-rose-500 shadow-sm"
             onClick={() => void handleGenerate()}
             disabled={generating}
           >
