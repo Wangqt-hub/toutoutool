@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useScroll, useVelocity, useSpring, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { Puzzle, Plane, Lightbulb } from "lucide-react";
 import { CapybaraHero } from "@/components/mascot/CapybaraHero";
 
@@ -48,16 +48,6 @@ const tools = [
 ];
 
 export default function ToolsHomePage() {
-  const { scrollY } = useScroll();
-  const scrollVelocity = useVelocity(scrollY);
-  const smoothVelocity = useSpring(scrollVelocity, {
-    damping: 15,
-    stiffness: 120,
-    mass: 0.6,
-    restDelta: 0.001
-  });
-  const yPullEffect = useTransform(smoothVelocity, [-800, 0, 800], [-120, 0, 120]);
-
   return (
     <div className="relative min-h-[calc(100vh-6rem)] w-full max-w-5xl overflow-hidden px-2 sm:px-6">
       <section className="relative z-40 mb-10 flex flex-col justify-between gap-6 md:flex-row md:items-end">
@@ -98,7 +88,6 @@ export default function ToolsHomePage() {
             >
               <Link href={tool.href as any} className="block group">
                 <motion.div
-                  style={{ y: yPullEffect }}
                   whileHover={{ 
                     scale: 1.05, 
                     rotate: 0, 
@@ -127,7 +116,7 @@ export default function ToolsHomePage() {
                   </div>
                   
                   {/* 可爱的小夹子或者胶带来装饰卡片（纯CSS） */}
-                  <div className="absolute -top-3 left-1/2 h-6 w-12 -translate-x-1/2 rounded bg-white/50 backdrop-blur-md shadow-sm rotate-2 hidden md:block"></div>
+                  <div className="absolute -top-3 left-1/2 h-6 w-12 -translate-x-1/2 rounded bg-white/50 backdrop-blur-md shadow-sm rotate-2"></div>
                 </motion.div>
               </Link>
             </motion.div>

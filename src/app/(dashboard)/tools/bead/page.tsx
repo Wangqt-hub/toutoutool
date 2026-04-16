@@ -131,180 +131,165 @@ function listOverviewItems(overview: BeadWorkspaceOverview | null) {
     : [...overview.history];
 }
 
-function WorkspaceSquareThumbnail({
-  src,
-  alt,
-  eager = false,
-  containerClassName = "h-32 w-32 sm:h-36 sm:w-36",
-  onRefreshSrc,
+// -------------------------------------------------------------------------------- //
+// NEW DESKTOP SCENE LAYOUT 
+// -------------------------------------------------------------------------------- //
+
+function WorkspaceDeskScene({
+  current,
+  history,
+  onOpen,
+  onRefreshThumbnail,
+  loadingId,
 }: {
-  src: string | null;
-  alt: string;
-  eager?: boolean;
-  containerClassName?: string;
-  onRefreshSrc?: () => Promise<string | null | undefined>;
+  current?: BeadWorkspaceSummary;
+  history: BeadWorkspaceSummary[];
+  onOpen: (ws: BeadWorkspaceSummary) => void;
+  onRefreshThumbnail: (id: string) => Promise<string | null | undefined>;
+  loadingId: string | null;
 }) {
-  if (!src) {
+
+  if (!current && history.length === 0) {
     return (
-      <div
-        className={`flex shrink-0 items-center justify-center rounded-[28px] border border-dashed border-cream-100 bg-cream-50 text-slate-400 ${containerClassName}`}
-      >
-        <Layers3 className="h-9 w-9" />
+      <div className="flex flex-col items-center justify-center py-16 px-4 rounded-[2.5rem] border-4 border-dashed border-white/60 bg-white/40 shadow-sm">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-cream-50 shadow-inner mb-4">
+          <Layers3 className="h-8 w-8 text-cream-200" />
+        </div>
+        <h3 className="text-xl font-black text-slate-700 mb-2">桌子上空空如也</h3>
+        <p className="text-sm font-bold text-slate-400">目前还没有任何拼豆草稿呢，在下方选择一个方式开始吧！</p>
       </div>
     );
   }
 
   return (
-    <div
-      className={`flex shrink-0 items-center justify-center rounded-[28px] border border-cream-100 bg-cream-50 p-3 shadow-sm ${containerClassName}`}
-    >
-      <AutoRefreshImage
-        src={src}
-        onRefreshSrc={onRefreshSrc}
-        alt={alt}
-        loading={eager ? "eager" : "lazy"}
-        decoding="async"
-        fetchPriority={eager ? "high" : "low"}
-        className="h-full w-full object-contain"
-      />
+    <div className="relative w-full rounded-[3rem] border-4 border-white bg-gradient-to-br from-[#f8f5ec] to-[#e4ded0] shadow-[inset_0_20px_50px_rgba(0,0,0,0.02)] p-6 md:p-10 lg:p-14 lg:pb-24 overflow-hidden">
+       <div className="absolute top-8 left-8 flex items-center gap-2 opacity-50">
+          <div className="h-3 w-3 rounded-full bg-[#d0c6b6]" />
+          <div className="h-3 w-3 rounded-full bg-[#d0c6b6]" />
+       </div>
+
+       <div className="relative mx-auto max-w-4xl flex flex-col items-center lg:flex-row lg:items-start lg:justify-center gap-8 lg:gap-14">
+          
+          {current ? (
+            <motion.div 
+               initial={{ opacity: 0, y: 20, rotate: -2 }}
+               animate={{ opacity: 1, y: 0, rotate: -2 }}
+               whileHover={{ y: -8, rotate: 0 }}
+               transition={{ type: "spring", bounce: 0.4 }}
+               className="relative z-20 w-full max-w-[340px] shrink-0"
+            >
+               <div className="absolute -top-4 left-1/2 h-8 w-24 -translate-x-1/2 rotate-3 rounded bg-white/60 backdrop-blur-md shadow-sm z-30" />
+               
+               <div className="relative bg-white rounded-2xl p-4 md:p-5 shadow-[0_30px_70px_rgba(20,10,0,0.12)] border border-[#ede3cf]">
+                  <div className="aspect-square w-full rounded-xl bg-[#fdfaf5] border border-[#f0e6d5] shadow-inner flex items-center justify-center p-4 relative overflow-hidden">
+                     {current.thumbnailUrl ? (
+                         <AutoRefreshImage
+                           src={current.thumbnailUrl}
+                           onRefreshSrc={() => onRefreshThumbnail(current.id)}
+                           alt="当前图纸"
+                           loading="eager"
+                           className="h-full w-full object-contain filter drop-shadow-md"
+                         />
+                     ) : (
+                         <Layers3 className="h-16 w-16 text-[#e8dac1]" />
+                     )}
+                     
+                     <div className="absolute top-2 right-2 bg-rose-500 text-white text-[10px] font-black tracking-widest px-2 py-1 rounded-full shadow-sm">
+                        CURRENT
+                     </div>
+                  </div>
+
+                  <div className="mt-5 px-1 space-y-4">
+                     <div>
+                        <h3 className="font-black text-2xl text-slate-800 tracking-tight truncate">{current.name}</h3>
+                        <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">
+                           {current.width} × {current.height} · {current.brand}
+                        </p>
+                     </div>
+
+                     <div className="space-y-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <div className="flex justify-between items-end text-xs font-black text-slate-600">
+                           <span className="uppercase tracking-widest opacity-60">Progress</span>
+                           <span className="text-rose-500 text-sm">{current.progress.beanPercentage.toFixed(1)}%</span>
+                        </div>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-200/60 shadow-inner w-full">
+                           <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${current.progress.beanPercentage}%` }}
+                              transition={{ duration: 1, ease: "easeOut" }}
+                              className="h-full rounded-full bg-gradient-to-r from-rose-400 to-rose-500 shadow-sm"
+                           />
+                        </div>
+                     </div>
+
+                     <Button
+                        onClick={() => onOpen(current)}
+                        disabled={loadingId === current.id}
+                        className="w-full h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-black text-base transition-transform active:scale-95 shadow-lg"
+                     >
+                        继续制作 <ArrowRight className="ml-2 h-4 w-4" />
+                     </Button>
+                  </div>
+               </div>
+            </motion.div>
+          ) : (
+             <div className="relative z-20 w-full max-w-[340px] shrink-0 aspect-[4/5] rounded-3xl border-4 border-dashed border-white/50 bg-white/20 flex flex-col items-center justify-center p-6 text-center shadow-inner">
+                <div className="text-[#c0b5a6] mb-4"><Layers3 className="h-12 w-12" /></div>
+                <h3 className="text-lg font-black text-[#a69d8f]">这有一个空位</h3>
+             </div>
+          )}
+
+          {history.length > 0 && (
+             <div className="relative z-10 w-full lg:w-[220px] flex flex-row justify-center lg:justify-start lg:flex-col gap-6 lg:-ml-6 mt-4 lg:mt-12 overflow-visible px-4 lg:px-0">
+                {history.map((his, idx) => {
+                   const tilt = idx === 0 ? 5 : -4;
+                   const xOffset = idx === 0 ? 0 : 15;
+                   
+                   return (
+                     <motion.div
+                        key={his.id}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1, rotate: tilt, x: xOffset }}
+                        whileHover={{ scale: 1.05, rotate: 0, x: 0, zIndex: 30 }}
+                        transition={{ type: "spring", bounce: 0.3, delay: idx * 0.1 }}
+                        className="cursor-pointer shrink-0 w-[140px] lg:w-full bg-white p-2.5 pb-4 md:p-3 md:pb-6 rounded-xl shadow-[0_15px_30px_rgba(20,10,0,0.08)] border border-cream-50"
+                        onClick={() => onOpen(his)}
+                     >
+                        <div className="w-full aspect-square bg-[#f8f5ec] rounded-lg border border-[#e8dfce] shadow-inner mb-3 flex items-center justify-center p-2 relative overflow-hidden">
+                           <AutoRefreshImage
+                              src={his.thumbnailUrl}
+                              onRefreshSrc={() => onRefreshThumbnail(his.id)}
+                              alt={his.name}
+                              loading="lazy"
+                              className="h-full w-full object-contain mix-blend-multiply opacity-80"
+                           />
+                           <div className="absolute block top-0 right-0 border-[10px] border-transparent border-t-slate-300 border-r-slate-300" />
+                        </div>
+                        
+                        <div className="px-1 space-y-1 text-center">
+                           <h4 className="font-black text-xs text-slate-700 truncate">{his.name}</h4>
+                           <div className="text-[10px] font-bold text-slate-400">
+                             {his.progress.beanPercentage.toFixed(0)}%
+                           </div>
+                        </div>
+                        
+                        <div className="absolute inset-0 bg-slate-900/5 opacity-0 hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center backdrop-blur-[1px]">
+                           <div className="bg-slate-800 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
+                              唤起 <History className="w-3 h-3"/>
+                           </div>
+                        </div>
+                     </motion.div>
+                   )
+                })}
+             </div>
+          )}
+       </div>
     </div>
   );
 }
 
-function CurrentWorkspaceCard({
-  workspace,
-  onOpen,
-  onRefreshThumbnail,
-  loading,
-}: {
-  workspace: BeadWorkspaceSummary;
-  onOpen: () => void;
-  onRefreshThumbnail?: () => Promise<string | null | undefined>;
-  loading?: boolean;
-}) {
-  return (
-    <motion.div
-      whileHover={{ y: -8, scale: 1.02, rotate: -1 }}
-      transition={{ type: "spring", bounce: 0.4 }}
-      className="relative max-w-sm"
-    >
-      <div className="overflow-hidden rounded-xl border border-slate-200/50 bg-white p-3 shadow-cute pb-8">
-        <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-cream-50/50">
-          {workspace.thumbnailUrl ? (
-            <AutoRefreshImage
-              src={workspace.thumbnailUrl}
-              onRefreshSrc={onRefreshThumbnail}
-              alt="当前图纸缩略图"
-              loading="eager"
-              decoding="async"
-              fetchPriority="high"
-              className="h-full w-full object-contain"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-slate-300">
-              <Layers3 className="h-12 w-12" />
-            </div>
-          )}
-          <div className="absolute -top-1 left-1/2 h-4 w-12 -translate-x-1/2 rotate-2 bg-[#FFFDE7]/80 shadow-sm backdrop-blur" />
-        </div>
+// -------------------------------------------------------------------------------- //
 
-        <div className="mt-4 flex flex-col gap-3 px-1">
-          <div>
-            <h3 className="truncate font-bold text-lg text-slate-800">
-              {workspace.name}
-            </h3>
-            <p className="text-xs font-semibold text-slate-500">
-              {workspace.width} × {workspace.height} · {workspace.brand}
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-[11px] font-bold text-slate-600">
-              <span>完成度</span>
-              <span>{workspace.progress.beanPercentage.toFixed(1)}%</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-cream-100">
-              <div
-                className="h-full rounded-full bg-accent-brown"
-                style={{ width: `${workspace.progress.beanPercentage}%` }}
-              />
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            className="mt-2 w-full rounded-full font-bold shadow-sm h-10 hover:-translate-y-0.5 transition-all"
-            onClick={onOpen}
-            disabled={loading}
-          >
-            继续制作
-            <ArrowRight className="ml-1 h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-function HistoryWorkspaceCard({
-  workspace,
-  onOpen,
-  onRefreshThumbnail,
-  loading,
-}: {
-  workspace: BeadWorkspaceSummary;
-  onOpen: () => void;
-  onRefreshThumbnail?: () => Promise<string | null | undefined>;
-  loading?: boolean;
-}) {
-  return (
-    <motion.div
-      whileHover={{ y: -5, scale: 1.05, rotate: 2 }}
-      transition={{ type: "spring", bounce: 0.4 }}
-      className="relative shrink-0 md:min-w-[180px] w-[200px]"
-    >
-      <div className="overflow-hidden rounded-xl border border-slate-200/50 bg-white p-2.5 shadow-sm transition-shadow hover:shadow-cute pb-6 group cursor-pointer" onClick={onOpen}>
-        <div className="relative aspect-square w-full overflow-hidden rounded-md bg-cream-50 group-hover:bg-cream-100 transition-colors">
-          <WorkspaceSquareThumbnail
-            src={workspace.thumbnailUrl}
-            alt="历史图纸缩略图"
-            onRefreshSrc={onRefreshThumbnail}
-            containerClassName="h-full w-full border-none shadow-none bg-transparent"
-          />
-        </div>
-
-        <div className="mt-3 flex flex-col gap-2 px-1">
-          <div>
-            <h3 className="truncate text-sm font-bold text-slate-800">
-              {workspace.name}
-            </h3>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between text-[10px] font-bold text-slate-500">
-              <span>{workspace.progress.beanPercentage.toFixed(0)}%</span>
-            </div>
-            <div className="h-1 overflow-hidden rounded-full bg-cream-100">
-              <div
-                className="h-full rounded-full bg-accent-deep"
-                style={{ width: `${workspace.progress.beanPercentage}%` }}
-              />
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-1 w-full text-[11px] h-7 bg-cream-50/50 hover:bg-cream-100/50 text-slate-600"
-            disabled={loading}
-          >
-            打开图纸
-          </Button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
 export default function BeadToolPage() {
   const router = useRouter();
   const [overview, setOverview] = useState<BeadWorkspaceOverview | null>(null);
@@ -401,86 +386,51 @@ export default function BeadToolPage() {
 
   return (
     <div className="space-y-6 lg:space-y-8">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 px-2">
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Bead Tool
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500/70">
+            Bead Dashboard
           </p>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h2 className="text-3xl font-black tracking-tight text-slate-800">
             拼豆工作台
           </h2>
         </div>
         <Button
           type="button"
           variant="ghost"
-          size="sm"
+          className="rounded-full shadow-sm font-bold border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100 hover:scale-105 transition-all"
           onClick={() => void loadOverview()}
         >
-          刷新
+          刷新桌面
         </Button>
       </div>
 
-      {overview?.current ? (
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <PlayCircle className="h-5 w-5 text-accent-brown" />
-            <h3 className="text-lg font-semibold text-slate-900">当前草稿</h3>
-          </div>
-          <CurrentWorkspaceCard
-            workspace={overview.current}
-            onOpen={() => openWorkspace(overview.current!)}
-            onRefreshThumbnail={() => refreshWorkspaceThumbnailSrc(overview.current!.id)}
-            loading={openingId === overview.current.id}
-          />
-        </section>
-      ) : null}
-
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <History className="h-5 w-5 text-accent-brown" />
-          <h3 className="text-lg font-semibold text-slate-900">历史图纸</h3>
-        </div>
-
+      <section>
         {loading ? (
-          <Card className="border-white/80 bg-white/92 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-            <div className="flex items-center gap-3 text-sm text-slate-500">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-brown/25 border-t-accent-brown" />
-              正在加载历史工作台...
+            <div className="flex items-center justify-center p-16 rounded-[3rem] border-4 border-white bg-cream-50 shadow-sm animate-pulse text-slate-400 font-black tracking-widest text-sm">
+               加载中...
             </div>
-          </Card>
-        ) : overview?.history.length ? (
-          <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:overflow-visible xl:grid-cols-3">
-            {overview.history.map((workspace) => (
-              <HistoryWorkspaceCard
-                key={workspace.id}
-                workspace={workspace}
-                onOpen={() => openWorkspace(workspace)}
-                onRefreshThumbnail={() => refreshWorkspaceThumbnailSrc(workspace.id)}
-                loading={openingId === workspace.id}
-              />
-            ))}
-          </div>
         ) : (
-          <Card className="border-dashed border-cream-100 bg-cream-50/70">
-            <div className="flex items-start gap-3">
-              <Clock3 className="mt-0.5 h-5 w-5 text-slate-400" />
-              <div>
-                <p className="text-sm font-medium text-slate-700">还没有历史图纸</p>
-              </div>
-            </div>
-          </Card>
+            <WorkspaceDeskScene 
+               current={overview?.current ?? undefined}
+               history={overview?.history || []}
+               onOpen={openWorkspace}
+               onRefreshThumbnail={refreshWorkspaceThumbnailSrc}
+               loadingId={openingId}
+            />
         )}
       </section>
 
       {error ? (
-        <Card className="border-red-200 bg-red-50/80 text-sm text-red-600">
+        <Card className="border-red-200 bg-red-50/80 p-4 text-sm font-bold text-red-600 shadow-sm rounded-2xl">
           {error}
         </Card>
       ) : null}
 
-      <section className="space-y-3">
+      <section className="space-y-5 pt-8 border-t-4 border-dashed border-slate-200 px-2 mt-8">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">新建图纸</h3>
+          <h3 className="text-xl font-black text-slate-800">新建图纸</h3>
+          <p className="text-xs font-bold text-slate-400 mt-1">从这里把新的素材丢进工作台吧</p>
         </div>
 
         <ImportModeSelector />
